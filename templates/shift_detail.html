@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}تفاصيل الوردية #{{ shift.id }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4 class="mb-0">تفاصيل الوردية #{{ shift.id }} - {{ shift.user.full_name if shift.user else '' }}</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('shift_report_print', sid=shift.id) }}" class="btn btn-primary btn-sm"><i class="bi bi-printer"></i> طباعة التقرير المفصّل</a>
+        <a href="{{ url_for('export_shift_excel_route', sid=shift.id) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+        <a href="{{ url_for('export_shift_pdf_route', sid=shift.id) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        {% if current_user.has_permission('shifts_manage') %}
+        <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#editShiftModal"><i class="bi bi-pencil"></i> تعديل</button>
+        <form method="POST" action="{{ url_for('delete_shift', sid=shift.id) }}" onsubmit="return confirm('حذف هذه الوردية نهائيًا؟')" class="d-inline">
+            <button class="btn btn-outline-dark btn-sm"><i class="bi bi-trash"></i> حذف</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<p class="text-muted">
+    الخزينة: {{ shift.cashbox.name if shift.cashbox else '-' }} |
+    الفتح: {{ (shift.opened_at|local).strftime('%Y-%m-%d %H:%M') }} |
+    الإغلاق: {{ (shift.closed_at|local).strftime('%Y-%m-%d %H:%M') if shift.closed_at else 'لا تزال مفتوحة' }} |
+    <span class="badge {{ 'bg-success' if shift.status=='open' else 'bg-secondary' }}">{{ 'مفتوحة' if shift.status=='open' else 'مغلقة' }}</span>
+</p>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="stat-card bg-primary-soft"><i class="bi bi-cash"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.cash_sales()) }}</span><span class="stat-label">مبيعات نقدية</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-info-soft"><i class="bi bi-bank"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.bank_sales()) }}</span><span class="stat-label">مبيعات بنكية/إلكترونية</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-warning-soft"><i class="bi bi-hourglass-split"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.credit_sales()) }}</span><span class="stat-label">مبيعات آجلة</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-success-soft"><i class="bi bi-graph-up"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.total_sales()) }}</span><span class="stat-label">إجمالي المبيعات</span></div></div></div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="stat-card bg-success-soft"><i class="bi bi-person-check"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.collected_from_customers()) }}</span><span class="stat-label">محصّل من عملاء</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-success-soft"><i class="bi bi-plus-circle"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.other_income()) }}</span><span class="stat-label">إيرادات أخرى</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-danger-soft"><i class="bi bi-dash-circle"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.total_expenses()) }}</span><span class="stat-label">إجمالي المصروفات</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-secondary-soft"><i class="bi bi-receipt-cutoff"></i>
+        <div><span class="stat-num">{{ shift.operations_count() }}</span><span class="stat-label">عدد العمليات ({{ shift.invoices_count() }} فاتورة)</span></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="stat-card bg-danger-soft"><i class="bi bi-arrow-return-left"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.pure_returns_total()) }}</span><span class="stat-label">مرتجعات ({{ shift.pure_returns()|length }} عملية)</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-warning-soft"><i class="bi bi-arrow-repeat"></i>
+        <div><span class="stat-num">{{ shift.exchanges()|length }}</span><span class="stat-label">استبدال (مُعاد {{ "%.2f"|format(shift.exchange_returned_total()) }} / جديد {{ "%.2f"|format(shift.exchange_new_total()) }})</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-info-soft"><i class="bi bi-bag-check"></i>
+        <div><span class="stat-num">{{ shift.pieces_sold() }} / {{ shift.pieces_returned() }}</span><span class="stat-label">قطع مباعة / مُرجَعة</span></div></div></div>
+    <div class="col-md-3"><div class="stat-card bg-success-soft"><i class="bi bi-cash-coin"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(shift.net_sales()) }}</span><span class="stat-label">صافي المبيعات بعد المرتجعات</span></div></div></div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-3 no-print">
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#secItems"><i class="bi bi-list-ul"></i> الأصناف المباعة</button>
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#secReturns"><i class="bi bi-arrow-left-right"></i> المرتجعات والاستبدال ({{ shift.period_returns()|length }})</button>
+    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#secRefunds"><i class="bi bi-cash-stack"></i> المردود للعملاء</button>
+</div>
+
+<div class="collapse mb-3" id="secItems">
+    <div class="card"><div class="card-header">الأصناف المباعة في الوردية</div>
+    <table class="table table-sm mb-0">
+        <thead><tr><th>المنتج</th><th>المقاس</th><th>اللون</th><th>الكمية</th><th>القيمة</th></tr></thead>
+        <tbody>
+        {% for p, q, t in shift.items_summary() %}
+            <tr><td>{{ p.name }}{{ p|bc }}</td><td>{{ p.size or '-' }}</td><td>{{ p.color or '-' }}</td><td>{{ q }}</td><td>{{ "%.2f"|format(t) }}</td></tr>
+        {% else %}<tr><td colspan="5" class="text-center text-muted py-3">لا توجد مبيعات</td></tr>{% endfor %}
+        </tbody>
+    </table></div>
+</div>
+
+<div class="collapse mb-3" id="secReturns">
+    <div class="card"><div class="card-header">المرتجعات والاستبدال المنفّذة خلال الوردية</div>
+    <table class="table table-sm mb-0">
+        <thead><tr><th>الرقم</th><th>الوقت</th><th>النوع</th><th>الفاتورة الأصلية</th><th>الأصناف</th><th>القيمة المُعادة</th><th>الفرق</th></tr></thead>
+        <tbody>
+        {% for r in shift.period_returns() %}
+            <tr>
+                <td>{{ r.return_number }}</td>
+                <td>{{ (r.date|local).strftime('%H:%M') }}</td>
+                <td>{% if r.is_exchange() %}<span class="badge bg-warning text-dark">استبدال</span>{% else %}<span class="badge bg-danger">إرجاع</span>{% endif %}</td>
+                <td><a href="{{ url_for('invoice_print', iid=r.invoice_id) }}">{{ r.invoice.invoice_number }}</a>
+                    {% if r.exchange_invoice %} ← <a href="{{ url_for('invoice_print', iid=r.exchange_invoice_id) }}">{{ r.exchange_invoice.invoice_number }}</a>{% endif %}</td>
+                <td class="small">{% for ri in r.items %}{{ ri.invoice_item.product.display_name() }} × {{ ri.quantity }}{{ '، ' if not loop.last }}{% endfor %}</td>
+                <td class="text-danger">{{ "%.2f"|format(r.total) }}</td>
+                <td>{% if r.is_exchange() %}{% set d = r.exchange_difference() %}
+                    <span class="{{ 'text-success' if d > 0 else ('text-danger' if d < 0 else '') }}">{{ '%+.2f'|format(d) }}</span>{% else %}-{% endif %}</td>
+            </tr>
+        {% else %}<tr><td colspan="7" class="text-center text-muted py-3">لا توجد مرتجعات أو استبدال</td></tr>{% endfor %}
+        </tbody>
+    </table></div>
+</div>
+
+<div class="collapse mb-3" id="secRefunds">
+    {% set refunds = shift.refunds_by_method() %}
+    <div class="card"><div class="card-body row text-center">
+        <div class="col"><div class="text-muted small">نقدًا من الصندوق</div><div class="fw-bold text-danger">{{ "%.2f"|format(refunds.cash) }}</div></div>
+        <div class="col"><div class="text-muted small">تحويل بنكي</div><div class="fw-bold">{{ "%.2f"|format(refunds.bank) }}</div></div>
+        <div class="col"><div class="text-muted small">خصم من الدين</div><div class="fw-bold">{{ "%.2f"|format(refunds.customer_credit) }}</div></div>
+        <div class="col"><div class="text-muted small">فروقات استبدال حصّلناها</div><div class="fw-bold text-success">{{ "%.2f"|format(shift.exchange_collected()) }}</div></div>
+    </div></div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">مطابقة الصندوق</div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><p class="mb-1 text-muted">الرصيد الافتتاحي</p><p class="fw-bold">{{ "%.2f"|format(shift.opening_cash) }} {{ currency }}</p></div>
+            <div class="col-md-3"><p class="mb-1 text-muted">إجمالي المقبوضات</p><p class="fw-bold">{{ "%.2f"|format(shift.total_receipts()) }} {{ currency }}</p></div>
+            <div class="col-md-3"><p class="mb-1 text-muted">سلف/سحوبات/رواتب مرتبطة بهذه الخزينة (صافي)</p><p class="fw-bold">{{ "%.2f"|format(shift.other_cash_movements()) }} {{ currency }}</p></div>
+            <div class="col-md-3"><p class="mb-1 text-muted">مردود للعملاء نقدًا (إرجاع/فرق استبدال)</p><p class="fw-bold text-danger">- {{ "%.2f"|format(shift.refunds_cash()) }} {{ currency }}</p></div>
+            <div class="col-md-3"><p class="mb-1 text-muted">تحويلات بين الخزائن (داخل − خارج)</p><p class="fw-bold">{{ "%.2f"|format(shift.transfers_in() - shift.transfers_out()) }} {{ currency }}</p></div>
+            <div class="col-md-3"><p class="mb-1 text-muted">الرصيد النهائي المتوقع (نقدًا)</p><p class="fw-bold">{{ "%.2f"|format(shift.expected_cash()) }} {{ currency }}</p></div>
+            <div class="col-md-3"><p class="mb-1 text-muted">الرصيد الفعلي عند الإغلاق</p>
+                <p class="fw-bold">{{ "%.2f"|format(shift.counted_cash) if shift.counted_cash is not none else 'لم يُغلق بعد' }} {{ currency if shift.counted_cash is not none else '' }}</p>
+            </div>
+        </div>
+        {% if shift.status == 'closed' %}
+        <p class="{{ 'text-danger fw-bold' if shift.difference() != 0 else 'text-success fw-bold' }} mb-1">
+            الفرق: {{ "%.2f"|format(shift.difference()) }} {{ currency }}
+            {% if shift.difference() == 0 %}(مطابقة تمامًا){% elif shift.difference() > 0 %}(زيادة في الصندوق){% else %}(عجز في الصندوق){% endif %}
+        </p>
+        {% endif %}
+        {% if shift.note %}<p class="text-muted mb-0">ملاحظات: {{ shift.note }}</p>{% endif %}
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">تفاصيل المصروفات خلال الوردية</div>
+    <table class="table mb-0">
+        <thead><tr><th>الوقت</th><th>طريقة الدفع</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+        <tbody>
+        {% for e in shift.expenses_list() %}
+            <tr>
+                <td>{{ (e.date|local).strftime('%H:%M') }}</td>
+                <td>{% if e.payment_method=='bank' %}بنكي{% elif e.payment_method=='cash' %}نقدي{% else %}-{% endif %}</td>
+                <td class="text-danger">{{ "%.2f"|format(e.amount) }}</td>
+                <td>{{ e.note or '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-3">لا توجد مصروفات في هذه الوردية</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-header">فواتير هذه الوردية</div>
+    <table class="table mb-0">
+        <thead><tr><th>رقم الفاتورة</th><th>الوقت</th><th>طريقة الدفع</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
+        <tbody>
+        {% for i in shift.invoices %}
+            <tr>
+                <td><a href="{{ url_for('invoice_print', iid=i.id) }}">{{ i.invoice_number }}</a></td>
+                <td>{{ (i.date|local).strftime('%H:%M') }}</td>
+                <td>{{ i.payment_label() }}</td>
+                <td>{{ "%.2f"|format(i.total) }}</td>
+                <td><span class="badge {{ 'bg-secondary' if i.status=='voided' else 'bg-success' }}">{{ 'ملغاة' if i.status=='voided' else 'معتمدة' }}</span></td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">لا توجد فواتير في هذه الوردية</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<a href="{{ url_for('shifts') }}" class="btn btn-outline-secondary mt-3 no-print">رجوع</a>
+
+{% if current_user.has_permission('shifts_manage') %}
+<div class="modal fade" id="editShiftModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <form method="POST" action="{{ url_for('edit_shift', sid=shift.id) }}">
+            <div class="modal-header"><h5 class="modal-title">تعديل الوردية #{{ shift.id }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <label class="form-label">الرصيد الافتتاحي</label>
+                <input type="number" step="0.01" name="opening_cash" class="form-control mb-2" value="{{ shift.opening_cash }}">
+                <label class="form-label">الرصيد المعدود فعليًا (عند الإغلاق)</label>
+                <input type="number" step="0.01" name="counted_cash" class="form-control mb-2" value="{{ shift.counted_cash if shift.counted_cash is not none else '' }}">
+                <label class="form-label">ملاحظات</label>
+                <input type="text" name="note" class="form-control" value="{{ shift.note or '' }}">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+            </div>
+        </form>
+    </div></div>
+</div>
+{% endif %}
+{% endblock %}

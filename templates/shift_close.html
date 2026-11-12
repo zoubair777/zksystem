@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}إغلاق وردية{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-clock-history"></i> إغلاق الوردية ومطابقة الصندوق</div>
+            <div class="card-body">
+                <table class="table">
+                    <tr><td>النقد الافتتاحي</td><td class="text-end">{{ "%.2f"|format(shift.opening_cash) }} {{ currency }}</td></tr>
+                    <tr><td>مبيعات نقدية خلال الوردية</td><td class="text-end">{{ "%.2f"|format(shift.cash_sales()) }} {{ currency }}</td></tr>
+                    <tr><td>مبيعات بنكية/تحويل</td><td class="text-end">{{ "%.2f"|format(shift.bank_sales()) }} {{ currency }}</td></tr>
+                    <tr><td>مبيعات آجلة (دين)</td><td class="text-end">{{ "%.2f"|format(shift.credit_sales()) }} {{ currency }}</td></tr>
+                    {% if shift.transfers_in() %}<tr><td>محوَّل إلى هذه الخزينة خلال الوردية</td><td class="text-end text-success">+ {{ "%.2f"|format(shift.transfers_in()) }} {{ currency }}</td></tr>{% endif %}
+                    {% if shift.transfers_out() %}<tr><td>محوَّل من هذه الخزينة خلال الوردية</td><td class="text-end text-danger">- {{ "%.2f"|format(shift.transfers_out()) }} {{ currency }}</td></tr>{% endif %}
+                    {% set refunds = shift.refunds_by_method() %}
+                    {% if shift.period_returns() %}<tr><td>مرتجعات واستبدال خلال الوردية ({{ shift.period_returns()|length }} عملية)</td><td class="text-end text-danger">{{ "%.2f"|format(shift.all_returns_value()) }} {{ currency }}</td></tr>{% endif %}
+                    {% if refunds.cash %}<tr><td>مردود للعملاء نقدًا (يُخصم من المتوقع)</td><td class="text-end text-danger">- {{ "%.2f"|format(refunds.cash) }} {{ currency }}</td></tr>{% endif %}
+                    <tr class="fw-bold"><td>النقد المتوقع بالصندوق</td><td class="text-end">{{ "%.2f"|format(shift.expected_cash()) }} {{ currency }}</td></tr>
+                </table>
+                <a href="{{ url_for('shift_report_print', sid=shift.id) }}" target="_blank" class="btn btn-outline-primary btn-sm mb-3"><i class="bi bi-printer"></i> معاينة/طباعة تقرير الوردية قبل الإغلاق</a>
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">النقد الفعلي المعدود بالصندوق الآن</label>
+                        <input type="number" step="0.01" name="counted_cash" class="form-control" required autofocus>
+                        <div class="form-text">القيمة السالبة مسموحة وتُسجَّل كما هي.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ملاحظات (اختياري)</label>
+                        <textarea name="note" class="form-control" rows="2"></textarea>
+                    </div>
+                    <button class="btn btn-danger w-100"><i class="bi bi-check-circle"></i> تأكيد إغلاق الوردية</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}الحسابات البنكية وخزائن العملات{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-bank"></i> الحسابات البنكية وخزائن العملات</h4>
+    <a href="{{ url_for('cashboxes') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-safe2"></i> الخزائن النقدية</a>
+</div>
+<div class="alert alert-info small">
+    هنا تسجّل حساباتك في المصارف، وأي خزنة فيها عملة أجنبية (دولار، جنيه...). الرصيد يُحسب تلقائيًا من الحركات.
+    <strong>الرصيد الافتتاحي</strong> هو الموجود فعلًا في الحساب يوم تضيفه، وما قبله لا يُحسب.
+    المبيعات والحركات البنكية بالدينار تدخل <strong>الحساب الافتراضي</strong> تلقائيًا.
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">الحسابات</div>
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>الحساب</th><th>النوع</th><th>العملة</th><th class="text-end">الرصيد</th><th class="text-end">متوسط سعر الشراء</th><th></th></tr></thead>
+        <tbody>
+        {% for v in funds %}{% set f = v.fund %}
+            <tr class="{{ 'text-muted' if not f.active }}">
+                <td><a href="{{ url_for('fund_statement', fid=f.id) }}" class="text-decoration-none fw-bold">{{ f.name }}</a>
+                    {% if f.is_default %}<span class="badge bg-primary">افتراضي</span>{% endif %}
+                    {% if not f.active %}<span class="badge bg-secondary">موقوف</span>{% endif %}</td>
+                <td>{{ 'خزنة عملة' if f.kind == 'cash' else 'حساب بنكي' }}</td>
+                <td>{{ f.currency_code }}</td>
+                <td class="text-end fw-bold {{ 'text-danger' if v.balance < 0 }}" dir="ltr">{{ "{:,.2f}".format(v.balance) }} {{ f.currency_code }}</td>
+                <td class="text-end">{% if v.avg_rate %}1 {{ f.currency_code }} = {{ "%g"|format(v.avg_rate) }} د.ل{% else %}-{% endif %}</td>
+                <td class="text-nowrap">
+                    <a href="{{ url_for('fund_statement', fid=f.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-journal-text"></i> كشف</a>
+                    <button type="button" class="btn btn-sm btn-outline-secondary edit-fund" data-id="{{ f.id }}" data-name="{{ f.name }}"
+                            data-active="{{ 1 if f.active else 0 }}" data-default="{{ 1 if f.is_default else 0 }}" data-currency="{{ f.currency_code }}"
+                            data-opening="{{ f.opening_balance or 0 }}" data-rate="{{ f.opening_rate or 1 }}"><i class="bi bi-pencil"></i></button>
+                    <form method="POST" action="{{ url_for('delete_fund_account', fid=f.id) }}" class="d-inline" onsubmit="return confirm('حذف الحساب؟')">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا توجد حسابات بعد. أضف حسابك البنكي أو خزنة الدولار من تحت.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-5">
+        <div class="card h-100">
+            <div class="card-header">إضافة حساب</div>
+            <div class="card-body">
+                <form method="POST" class="row g-2">
+                    <div class="col-12"><label class="form-label">الاسم</label><input type="text" name="name" class="form-control" placeholder="مثال: مصرف الجمهورية، خزنة الدولار" required></div>
+                    <div class="col-6"><label class="form-label">النوع</label>
+                        <select name="kind" class="form-select"><option value="bank">حساب بنكي</option><option value="cash">خزنة عملة (نقد)</option></select></div>
+                    <div class="col-6"><label class="form-label">العملة</label>
+                        <select name="currency_code" id="newFundCur" class="form-select">{% for c in currency_codes %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
+                    <div class="col-6"><label class="form-label">الرصيد الموجود فيه الآن</label><input type="number" step="0.01" name="opening_balance" class="form-control" value="0"></div>
+                    <div class="col-6" id="newFundRateWrap" style="display:none"><label class="form-label">اشتريته بكم؟ (دينار لكل 1)</label><input type="number" step="0.0001" min="0" name="opening_rate" class="form-control"></div>
+                    <div class="col-12"><button class="btn btn-primary"><i class="bi bi-plus-lg"></i> إضافة</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card h-100 border-primary">
+            <div class="card-header"><i class="bi bi-arrow-left-right"></i> تحويل / إيداع / صرف عملة</div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('fund_transfer') }}" class="row g-2" id="trForm">
+                    <div class="col-md-6"><label class="form-label">من</label>
+                        <select name="from_place" id="trFrom" class="form-select" required>
+                            <option value="">-- اختر --</option>
+                            {% for b in cashboxes %}<option value="box:{{ b.id }}" data-cur="LYD">خزينة: {{ b.name }} ({{ "{:,.2f}".format(b.balance or 0) }} LYD)</option>{% endfor %}
+                            {% for v in funds if v.fund.active %}<option value="fund:{{ v.fund.id }}" data-cur="{{ v.fund.currency_code }}">{{ v.fund.name }} ({{ "{:,.2f}".format(v.balance) }} {{ v.fund.currency_code }})</option>{% endfor %}
+                        </select></div>
+                    <div class="col-md-6"><label class="form-label">إلى</label>
+                        <select name="to_place" id="trTo" class="form-select" required>
+                            <option value="">-- اختر --</option>
+                            {% for b in cashboxes %}<option value="box:{{ b.id }}" data-cur="LYD">خزينة: {{ b.name }}</option>{% endfor %}
+                            {% for v in funds if v.fund.active %}<option value="fund:{{ v.fund.id }}" data-cur="{{ v.fund.currency_code }}">{{ v.fund.name }} ({{ v.fund.currency_code }})</option>{% endfor %}
+                        </select></div>
+                    <div class="col-md-4"><label class="form-label">المبلغ الخارج <span id="trFromCur"></span></label><input type="number" step="0.01" min="0.01" name="from_amount" id="trFromAmt" class="form-control" required></div>
+                    <div class="col-md-4" id="trToWrap" style="display:none"><label class="form-label">المبلغ المستلم <span id="trToCur"></span></label><input type="number" step="0.01" min="0.01" name="to_amount" id="trToAmt" class="form-control"></div>
+                    <div class="col-md-4"><label class="form-label">ملاحظة</label><input type="text" name="note" class="form-control"></div>
+                    <div class="col-12 small text-primary fw-bold" id="trRate"></div>
+                    <div class="col-12"><button class="btn btn-primary"><i class="bi bi-check2"></i> تسجيل</button>
+                        <span class="small text-muted ms-2">مثال صرف عملة: من "الخزينة الرئيسية" 7500 إلى "خزنة الدولار" 1000 = اشتريت 1000 دولار بسعر 7.5.</span></div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">آخر العمليات</div>
+    <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>التاريخ</th><th>الرقم</th><th>من</th><th>إلى</th><th class="text-end">خرج</th><th class="text-end">دخل</th><th class="text-end">السعر</th><th>ملاحظة</th><th></th></tr></thead>
+        <tbody>
+        {% for t in transfers %}
+            <tr>
+                <td class="text-nowrap">{{ (t.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ t.transfer_number }}</td><td>{{ t.from_name() }}</td><td>{{ t.to_name() }}</td>
+                <td class="text-end" dir="ltr">{{ "{:,.2f}".format(t.from_amount) }} {{ t.from_currency() }}</td>
+                <td class="text-end" dir="ltr">{{ "{:,.2f}".format(t.to_amount) }} {{ t.to_currency() }}</td>
+                <td class="text-end">{% if t.from_currency() != t.to_currency() and t.to_amount and t.from_amount %}{{ "%g"|format(((t.from_amount / t.to_amount) if t.from_currency() == 'LYD' else (t.to_amount / t.from_amount))|round(4)) }}{% else %}-{% endif %}</td>
+                <td class="small">{{ t.note or '' }}</td>
+                <td><form method="POST" action="{{ url_for('delete_fund_transfer', tid=t.id) }}" onsubmit="return confirm('حذف العملية وعكس أثرها؟')"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form></td>
+            </tr>
+        {% else %}
+            <tr><td colspan="9" class="text-center text-muted py-3">لا توجد عمليات</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<!-- نافذة تعديل واحدة مشتركة تُعبّأ بالجافاسكربت -->
+<div class="modal fade" id="editFundModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <form method="POST" id="editFundForm" data-action-template="{{ url_for('edit_fund_account', fid=0) }}">
+        <div class="modal-header"><h5 class="modal-title">تعديل الحساب</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+            <label class="form-label">الاسم</label><input type="text" name="name" id="efName" class="form-control mb-2" required>
+            <label class="form-label">الرصيد الافتتاحي <span id="efCur"></span></label><input type="number" step="0.01" name="opening_balance" id="efOpening" class="form-control mb-2">
+            <div id="efRateWrap"><label class="form-label">سعر شراء الرصيد الافتتاحي (دينار لكل 1)</label><input type="number" step="0.0001" name="opening_rate" id="efRate" class="form-control mb-2"></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="active" value="1" id="efActive"><label class="form-check-label" for="efActive">الحساب شغّال</label></div>
+            <div class="form-check" id="efDefaultWrap"><input class="form-check-input" type="checkbox" name="is_default" value="1" id="efDefault"><label class="form-check-label" for="efDefault">الحساب الافتراضي للمبيعات والحركات البنكية</label></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button><button class="btn btn-primary">حفظ</button></div>
+    </form>
+</div></div></div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+    var nc = document.getElementById('newFundCur');
+    function syncNew() { document.getElementById('newFundRateWrap').style.display = nc.value === 'LYD' ? 'none' : 'block'; }
+    nc.addEventListener('change', syncNew); syncNew();
+
+    var f = document.getElementById('trFrom'), t = document.getElementById('trTo');
+    function cur(sel) { var o = sel.options[sel.selectedIndex]; return o && o.dataset.cur ? o.dataset.cur : ''; }
+    function syncTr() {
+        var a = cur(f), b = cur(t), fx = a && b && a !== b;
+        document.getElementById('trFromCur').textContent = a ? '(' + a + ')' : '';
+        document.getElementById('trToCur').textContent = b ? '(' + b + ')' : '';
+        document.getElementById('trToWrap').style.display = fx ? 'block' : 'none';
+        document.getElementById('trToAmt').required = fx;
+        var x = parseFloat(document.getElementById('trFromAmt').value) || 0, y = parseFloat(document.getElementById('trToAmt').value) || 0, msg = '';
+        if (fx && x && y) {
+            if (a === 'LYD') msg = 'السعر: 1 ' + b + ' = ' + (x / y).toFixed(4) + ' د.ل';
+            else if (b === 'LYD') msg = 'السعر: 1 ' + a + ' = ' + (y / x).toFixed(4) + ' د.ل';
+        }
+        document.getElementById('trRate').textContent = msg;
+    }
+    [f, t, document.getElementById('trFromAmt'), document.getElementById('trToAmt')].forEach(function (el) {
+        el.addEventListener('input', syncTr); el.addEventListener('change', syncTr);
+    });
+
+    var form = document.getElementById('editFundForm'), modal = null;
+    document.querySelectorAll('.edit-fund').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var d = btn.dataset;
+            form.action = form.dataset.actionTemplate.replace(/0\/edit$/, d.id + '/edit');
+            document.getElementById('efName').value = d.name;
+            document.getElementById('efOpening').value = d.opening;
+            document.getElementById('efRate').value = d.rate;
+            document.getElementById('efCur').textContent = '(' + d.currency + ')';
+            document.getElementById('efRateWrap').style.display = d.currency === 'LYD' ? 'none' : 'block';
+            document.getElementById('efDefaultWrap').style.display = d.currency === 'LYD' ? 'block' : 'none';
+            document.getElementById('efActive').checked = d.active === '1';
+            document.getElementById('efDefault').checked = d.default === '1';
+            modal = modal || new bootstrap.Modal(document.getElementById('editFundModal'));
+            modal.show();
+        });
+    });
+})();
+</script>
+{% endblock %}

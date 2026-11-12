@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>فاتورة {{ invoice.invoice_number }}</title>
+<link href="{{ url_for('static', filename='vendor/cairo/cairo.css') }}" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ═══════════════════════════════════════
+   وضع A4 (الطابعة العادية)
+═══════════════════════════════════════ */
+body {
+    font-family: 'Cairo', sans-serif;
+    padding: 30px;
+    color: #222;
+    font-size: 14px;
+}
+.invoice-header {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 3px solid #333;
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+.invoice-header h2 { font-size: 1.5em; }
+.invoice-header p { margin: 2px 0; font-size: 0.92em; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+}
+th { background: #f2f2f2; }
+.totals {
+    margin-top: 20px;
+    width: 320px;
+    margin-inline-start: auto;
+}
+.totals div {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #eee;
+}
+.totals .grand {
+    font-weight: bold;
+    font-size: 1.2em;
+    border-top: 2px solid #333;
+    border-bottom: none;
+    padding-top: 8px;
+    margin-top: 4px;
+}
+.void-stamp {
+    display: inline-block;
+    border: 3px solid #c0392b;
+    color: #c0392b;
+    font-weight: bold;
+    padding: 6px 20px;
+    transform: rotate(-8deg);
+    font-size: 1.4em;
+    margin-bottom: 15px;
+}
+.payment-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 5px;
+    background: #eee;
+    font-weight: bold;
+}
+.print-toolbar {
+    margin-top: 24px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.section-title {
+    margin-top: 14px;
+    font-weight: bold;
+    border-bottom: 1px solid #333;
+    padding-bottom: 3px;
+}
+body.paper-80mm .section-title, body.paper-58mm .section-title { margin-top: 6px; font-size: 10.5px; border-bottom: 1px dashed #000; }
+.thankyou {
+    margin-top: 30px;
+    text-align: center;
+    color: #777;
+    font-size: 0.95em;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+}
+
+/* ═══════════════════════════════════════
+   وضع 80مم — XP-80C
+═══════════════════════════════════════ */
+body.paper-80mm {
+    width: 76mm;
+    padding: 2mm 1mm;
+    font-size: 11px;
+    color: #000;
+}
+body.paper-80mm .invoice-header {
+    flex-direction: column;
+    text-align: center;
+    border-bottom: 1px dashed #000;
+    padding-bottom: 5px;
+    margin-bottom: 6px;
+}
+body.paper-80mm .invoice-header > div { text-align: center !important; }
+body.paper-80mm .invoice-header h2 { font-size: 1.15em; margin-bottom: 2px; }
+body.paper-80mm .invoice-header p { margin: 1px 0; font-size: 10px; }
+body.paper-80mm table { margin-top: 4px; width: 100%; }
+body.paper-80mm th,
+body.paper-80mm td {
+    border: none;
+    border-bottom: 1px dashed #aaa;
+    padding: 2px 1px;
+    font-size: 10px;
+    text-align: center;
+}
+body.paper-80mm th {
+    background: transparent;
+    border-bottom: 1px solid #000;
+    font-weight: bold;
+}
+body.paper-80mm .col-num { display: none; }
+body.paper-80mm .totals {
+    width: 100%;
+    margin-top: 6px;
+    margin-inline-start: 0;
+}
+body.paper-80mm .totals div {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    border-bottom: none;
+    font-size: 10.5px;
+}
+body.paper-80mm .totals .grand {
+    font-size: 12px;
+    font-weight: bold;
+    border-top: 1px dashed #000;
+    border-bottom: none;
+    margin-top: 3px;
+    padding-top: 4px;
+}
+body.paper-80mm .payment-badge { background: transparent; padding: 0; font-weight: bold; }
+body.paper-80mm .thankyou {
+    margin-top: 8px;
+    font-size: 10px;
+    text-align: center;
+    color: #000;
+    border-top: 1px dashed #000;
+    padding-top: 5px;
+}
+body.paper-80mm .void-stamp { font-size: 1em; padding: 3px 10px; margin-bottom: 6px; }
+
+/* ═══════════════════════════════════════
+   وضع 58مم
+═══════════════════════════════════════ */
+body.paper-58mm {
+    width: 54mm;
+    padding: 2mm 1mm;
+    font-size: 9.5px;
+    color: #000;
+}
+body.paper-58mm .invoice-header {
+    flex-direction: column;
+    text-align: center;
+    border-bottom: 1px dashed #000;
+    padding-bottom: 4px;
+    margin-bottom: 5px;
+}
+body.paper-58mm .invoice-header > div { text-align: center !important; }
+body.paper-58mm .invoice-header h2 { font-size: 1em; }
+body.paper-58mm .invoice-header p { margin: 1px 0; font-size: 9px; }
+body.paper-58mm table { margin-top: 3px; }
+body.paper-58mm th,
+body.paper-58mm td {
+    border: none;
+    border-bottom: 1px dashed #aaa;
+    padding: 2px 1px;
+    font-size: 9px;
+    text-align: center;
+}
+body.paper-58mm th { background: transparent; border-bottom: 1px solid #000; font-weight: bold; }
+body.paper-58mm .col-num { display: none; }
+.bc-sub { display: none; }
+body.paper-58mm .col-bc { display: none; }
+body.paper-58mm .bc-sub { display: block; font-size: 8px; direction: ltr; text-align: right; font-family: monospace; }
+body.paper-58mm .totals { width: 100%; margin-top: 5px; margin-inline-start: 0; }
+body.paper-58mm .totals div {
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+    border-bottom: none;
+    font-size: 9px;
+}
+body.paper-58mm .totals .grand {
+    font-size: 10.5px;
+    font-weight: bold;
+    border-top: 1px dashed #000;
+    margin-top: 3px;
+    padding-top: 3px;
+}
+body.paper-58mm .payment-badge { background: transparent; padding: 0; }
+body.paper-58mm .thankyou { margin-top: 8px; font-size: 9px; border-top: 1px dashed #000; padding-top: 4px; }
+
+/* ═══════════════════════════════════════
+   طباعة — إخفاء شريط الأدوات
+═══════════════════════════════════════ */
+@media print {
+    .print-toolbar { display: none !important; }
+    body { padding: 0; }
+}
+</style>
+</head>
+<body>
+
+{% if invoice.status == 'voided' %}
+<div style="text-align:center; margin-bottom:10px;">
+    <span class="void-stamp">فاتورة ملغاة</span>
+</div>
+{% endif %}
+
+<!-- ── رأس الفاتورة ── -->
+<div class="invoice-header">
+    <div>
+        <h2>{{ company }}</h2>
+        {% if company_subtitle %}<p class="text-muted">{{ company_subtitle }}</p>{% endif %}
+        {% if company_phone %}<p>📞 {{ company_phone }}</p>{% endif %}
+        {% if company_address %}<p>📍 {{ company_address }}</p>{% endif %}
+        {% if invoice_header_note %}<p style="margin-top:4px; font-weight:bold;">{{ invoice_header_note }}</p>{% endif %}
+        <p style="margin-top:4px; font-weight:bold;">{{ 'إيصال استبدال' if exchange_src else 'فاتورة مبيعات' }}</p>
+    </div>
+    <div style="text-align:left">
+        <p><strong>رقم الفاتورة:</strong> {{ invoice.invoice_number }}</p>
+        <p><strong>التاريخ:</strong> {{ (invoice.date|local).strftime('%Y-%m-%d %H:%M') }}</p>
+        <p><strong>العميل:</strong> {{ invoice.customer.name if invoice.customer else 'عميل نقدي' }}</p>
+        <p><strong>المخزن:</strong> {{ invoice.warehouse.name }}</p>
+        <p><strong>طريقة الدفع:</strong> <span class="payment-badge">{{ invoice.payment_label() }}</span></p>
+        <p><strong>الكاشير:</strong> {{ invoice.user.full_name if invoice.user else '-' }}{% if invoice.shift_id %} — وردية #{{ invoice.shift_id }}{% endif %}</p>
+        {% if exchange_src %}
+        <p><strong>بدل الفاتورة:</strong> {{ exchange_src.invoice.invoice_number }} ({{ exchange_src.return_number }})</p>
+        {% endif %}
+    </div>
+</div>
+
+{% if exchange_src %}
+<!-- ── الأصناف المُرجَعة في الاستبدال ── -->
+<div class="section-title">الأصناف المُعادة من العميل</div>
+<table>
+    <thead><tr><th class="col-num">#</th><th>المنتج</th><th class="col-bc">الباركود</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+    <tbody>
+    {% for ri in exchange_src.items %}
+        <tr>
+            <td class="col-num">{{ loop.index }}</td>
+            <td>{{ ri.invoice_item.product.name }}<div class="bc-sub">{{ ri.invoice_item.product.barcode or '' }}</div></td>
+            <td class="col-bc" style="font-family:monospace;direction:ltr;text-align:right;font-size:0.9em">{{ ri.invoice_item.product.barcode or '-' }}</td>
+            <td>{{ ri.quantity }}</td><td>{{ "%.2f"|format(ri.unit_price) }}</td><td>- {{ "%.2f"|format(ri.total) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<div class="section-title">الأصناف الجديدة المأخوذة بدلها</div>
+{% endif %}
+<!-- ── بنود الفاتورة ── -->
+<table>
+    <thead>
+        <tr>
+            <th class="col-num">#</th>
+            <th>المنتج</th><th class="col-bc">الباركود</th>
+            <th>الكمية</th>
+            <th>السعر</th>
+            <th>الإجمالي</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for item in invoice.items %}
+        <tr>
+            <td class="col-num">{{ loop.index }}</td>
+            <td>{{ item.product.name }}<div class="bc-sub">{{ item.product.barcode or '' }}</div></td><td class="col-bc" style="font-family:monospace;direction:ltr;text-align:right;font-size:0.9em">{{ item.product.barcode or '-' }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ "%.2f"|format(item.unit_price) }}</td>
+            <td>{{ "%.2f"|format(item.total) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<!-- ── الإجماليات ── -->
+<div class="totals">
+    {% if invoice.subtotal != invoice.total %}
+    <div><span>الإجمالي الفرعي</span><span>{{ "%.2f"|format(invoice.subtotal) }} {{ currency }}</span></div>
+    {% endif %}
+    {% if invoice.discount %}
+    <div><span>الخصم</span><span>- {{ "%.2f"|format(invoice.discount) }} {{ currency }}</span></div>
+    {% endif %}
+    <div class="grand"><span>{{ 'قيمة الأصناف الجديدة' if exchange_src else 'الإجمالي' }}</span><span>{{ "%.2f"|format(invoice.total) }} {{ currency }}</span></div>
+    {% if exchange_src %}
+    {% set diff = exchange_src.exchange_difference() %}
+    <div><span>قيمة المُعاد (رصيد استبدال)</span><span>- {{ "%.2f"|format(exchange_src.total) }} {{ currency }}</span></div>
+    <div class="grand">
+        {% if diff > 0 %}<span>فرق يدفعه العميل</span><span>{{ "%.2f"|format(diff) }} {{ currency }}</span>
+        {% elif diff < 0 %}<span>فرق مردود للعميل</span><span>{{ "%.2f"|format(-diff) }} {{ currency }}</span>
+        {% else %}<span>الفرق</span><span>0.00 {{ currency }} (متكافئ)</span>{% endif %}
+    </div>
+    {% if refund_entry %}
+    <div><span>طريقة الرد</span><span>{{ 'نقدًا' if refund_entry.payment_method == 'cash' else ('بنكي' if refund_entry.payment_method == 'bank' else 'خصم من دين العميل') }}</span></div>
+    {% endif %}
+    {% endif %}
+    {% if invoice.cash_amount %}
+    <div><span>نقدًا</span><span>{{ "%.2f"|format(invoice.cash_amount) }} {{ currency }}</span></div>
+    {% endif %}
+    {% if invoice.bank_amount %}
+    <div><span>بنك{{ ' (' + invoice.bank_name + ')' if invoice.bank_name }}</span><span>{{ "%.2f"|format(invoice.bank_amount) }} {{ currency }}</span></div>
+    {% endif %}
+    {% if invoice.credit_amount %}
+    <div style="color:#c0392b;"><span>آجل</span><span>{{ "%.2f"|format(invoice.credit_amount) }} {{ currency }}</span></div>
+    {% endif %}
+    {% if returned_total %}
+    <div style="color:#c0392b;"><span>مرتجع</span><span>- {{ "%.2f"|format(returned_total) }} {{ currency }}</span></div>
+    <div class="grand"><span>الصافي بعد المرتجع</span><span>{{ "%.2f"|format(invoice.total - returned_total) }} {{ currency }}</span></div>
+    {% endif %}
+</div>
+
+{% if returns %}
+<!-- ── سجل المرتجعات والاستبدال على هذه الفاتورة ── -->
+<div class="section-title">سجل المرتجعات والاستبدال</div>
+<table>
+    <thead><tr><th>الرقم</th><th>التاريخ</th><th>النوع</th><th>الأصناف</th><th>القيمة</th></tr></thead>
+    <tbody>
+    {% for r in returns %}
+        <tr>
+            <td style="font-family:monospace">{{ r.return_number }}</td>
+            <td>{{ (r.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+            <td>{% if r.is_exchange() %}استبدال{% if r.exchange_invoice %} ← {{ r.exchange_invoice.invoice_number }}{% endif %}
+                {% else %}إرجاع ({{ {'cash': 'نقدًا', 'bank': 'بنكي', 'customer_credit': 'من الدين'}.get(r.refund_method, r.refund_method) }}){% endif %}</td>
+            <td>{% for ri in r.items %}{{ ri.invoice_item.product.display_name() }} × {{ ri.quantity }}{{ '، ' if not loop.last }}{% endfor %}</td>
+            <td>- {{ "%.2f"|format(r.total) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if invoice.status == 'voided' and invoice.void_reason %}
+<p style="margin-top:12px; color:#c0392b; font-size:0.9em;"><strong>سبب الإلغاء:</strong> {{ invoice.void_reason }}</p>
+{% endif %}
+
+<!-- ── نص ختامي من الإعدادات ── -->
+<div class="thankyou">{{ invoice_footer or 'شكرًا لتعاملكم معنا' }}</div>
+
+<!-- ── شريط الأدوات ── -->
+<div class="print-toolbar">
+    <label style="font-size:.9em; font-weight:bold;">مقاس الطابعة:</label>
+    <select id="paperSizeSelect" style="padding:6px 12px; font-size:1em; border-radius:6px; border:1px solid #ccc;">
+        <option value="a4">A4 — طابعة عادية</option>
+        <option value="80mm">80مم — XP-80C / طابعة إيصالات</option>
+        <option value="58mm">58مم — طابعة إيصالات صغيرة</option>
+    </select>
+    <button onclick="window.print()"
+        style="padding:9px 28px; font-size:1em; cursor:pointer; background:#1a73e8; color:#fff; border:none; border-radius:6px;">
+        🖨️ طباعة
+    </button>
+    <a href="{{ url_for('export_invoice_pdf_route', iid=invoice.id) }}"
+        style="padding:9px 28px; font-size:1em; cursor:pointer; background:#c0392b; color:#fff; border:none; border-radius:6px; text-decoration:none; display:inline-block;">
+        📄 تصدير PDF
+    </a>
+    <a href="{{ url_for('pos') }}"
+        style="padding:9px 28px; font-size:1em; cursor:pointer; background:#2f6b4f; color:#fff; border:none; border-radius:6px; text-decoration:none; display:inline-block;">
+        🛒 بيع جديد
+    </a>
+    <button onclick="history.length > 1 ? history.back() : window.location.href='/sales'"
+        style="padding:9px 28px; font-size:1em; cursor:pointer; background:#6c757d; color:#fff; border:none; border-radius:6px;">
+        ← رجوع
+    </button>
+</div>
+
+<script>
+    const STORAGE_KEY = 'erp_invoice_paper_size';
+    const select      = document.getElementById('paperSizeSelect');
+    const pageStyle   = document.createElement('style');
+    document.head.appendChild(pageStyle);
+
+    function applySize(size) {
+        document.body.classList.remove('paper-80mm', 'paper-58mm');
+        if (size === '80mm') {
+            document.body.classList.add('paper-80mm');
+            pageStyle.textContent = '@page { size: 80mm auto; margin: 2mm 1mm; }';
+        } else if (size === '58mm') {
+            document.body.classList.add('paper-58mm');
+            pageStyle.textContent = '@page { size: 58mm auto; margin: 2mm 1mm; }';
+        } else {
+            pageStyle.textContent = '@page { size: A4; margin: 12mm; }';
+        }
+    }
+
+    const saved = localStorage.getItem(STORAGE_KEY) || '80mm';
+    select.value = saved;
+    applySize(saved);
+
+    select.addEventListener('change', () => {
+        localStorage.setItem(STORAGE_KEY, select.value);
+        applySize(select.value);
+    });
+
+    window.addEventListener('load', () => window.print());
+</script>
+</body>
+</html>

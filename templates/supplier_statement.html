@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}كشف حساب - {{ supplier.name }}{% endblock %}
+{% block content %}
+<style>
+    @media print {
+        .no-print, .sidebar, nav, header, #aiAssistantWidget { display: none !important; }
+        body, .main-content { margin: 0 !important; padding: 0 !important; }
+        .card { border: none !important; box-shadow: none !important; }
+    }
+    .st-credit { color: #b02a37; }
+    .st-debit { color: #198754; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4 class="mb-0"><i class="bi bi-journal-text"></i> كشف حساب مورد</h4>
+    <div>
+        <a href="{{ url_for('suppliers') }}" class="btn btn-outline-secondary btn-sm">رجوع للموردين</a>
+        <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> طباعة</button>
+    </div>
+</div>
+
+<div class="card mb-3"><div class="card-body">
+    <div class="row g-2 align-items-center">
+        <div class="col-md-6">
+            <h5 class="mb-1">{{ supplier.name }}</h5>
+            <div class="text-muted small">
+                {% if supplier.phone %}هاتف: {{ supplier.phone }} · {% endif %}
+                {% if supplier.address %}{{ supplier.address }} · {% endif %}
+                عملة المورد: {{ supplier.currency_code or 'LYD' }}
+            </div>
+        </div>
+        <div class="col-md-6 text-md-end">
+            <div class="small text-muted">الرصيد الحالي</div>
+            <div class="fs-4 fw-bold {% if (supplier.balance or 0) > 0 %}st-credit{% endif %}">{{ "%.2f"|format(supplier.balance or 0) }} {{ supplier.currency_code or 'LYD' }}</div>
+            <div class="small">{% if (supplier.balance or 0) > 0.005 %}<span class="text-danger">مستحق عليك للمورد</span>{% elif (supplier.balance or 0) < -0.005 %}<span class="text-success">مستحق لك عند المورد</span>{% else %}متوازن{% endif %}</div>
+        </div>
+    </div>
+    <form method="GET" class="row g-2 mt-2 no-print">
+        <div class="col-auto"><label class="col-form-label">من</label></div>
+        <div class="col-auto"><input type="date" name="from" value="{{ date_from or '' }}" class="form-control form-control-sm"></div>
+        <div class="col-auto"><label class="col-form-label">إلى</label></div>
+        <div class="col-auto"><input type="date" name="to" value="{{ date_to or '' }}" class="form-control form-control-sm"></div>
+        <div class="col-auto"><button class="btn btn-sm btn-outline-primary">عرض</button>
+            <a href="{{ url_for('supplier_statement', sid=supplier.id) }}" class="btn btn-sm btn-outline-secondary">الكل</a></div>
+    </form>
+    <div class="small text-muted mt-2 d-none d-print-block">
+        الفترة: {{ date_from or 'من البداية' }} → {{ date_to or 'حتى اليوم' }} · طُبع في {{ printed_at.strftime('%Y-%m-%d %H:%M') }}
+    </div>
+</div></div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">رصيد بداية الفترة</div><div class="fw-bold">{{ "%.2f"|format(opening) }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">مشتريات وديون (دائن)</div><div class="fw-bold st-credit">{{ "%.2f"|format(total_credit) }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">مدفوعات وسندات صرف (مدين)</div><div class="fw-bold st-debit">{{ "%.2f"|format(total_debit) }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">الرصيد في نهاية الفترة</div><div class="fw-bold">{{ "%.2f"|format(closing) }}</div><div class="small text-muted">{% if closing > 0.005 %}مستحق عليك{% elif closing < -0.005 %}مستحق لك{% else %}متوازن{% endif %}</div></div></div></div>
+</div>
+
+{% set cur = supplier.currency_code or 'LYD' %}
+{% set fx = cur != 'LYD' %}
+{% if fx %}
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">قيمة المشتريات بالدينار (بسعر كل فاتورة)</div><div class="fw-bold">{{ "{:,.2f}".format(purchases_local) }} د.ل</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">خرج من خزائننا بالدينار</div><div class="fw-bold">{{ "{:,.2f}".format(paid_local) }} د.ل</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">متوسط سعر الصرف اللي دفعنا به</div><div class="fw-bold">{% if avg_paid_rate %}1 {{ cur }} = {{ "%g"|format(avg_paid_rate) }} د.ل{% else %}-{% endif %}</div></div></div></div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0 align-middle">
+        <thead class="table-light">
+            <tr>
+                <th>التاريخ</th><th>نوع الحركة</th><th>المرجع</th><th>البيان</th>
+                {% if fx %}<th class="text-end">بالدينار</th><th class="text-end">السعر</th>{% endif %}
+                <th class="text-end">دائن {{ cur }}<br><small class="text-muted">(مستحق للمورد)</small></th>
+                <th class="text-end">مدين {{ cur }}<br><small class="text-muted">(دفعنا له)</small></th>
+                <th class="text-end">الرصيد {{ cur }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="table-secondary">
+                <td colspan="{{ 8 if fx else 6 }}">
+                    {% if date_from %}رصيد قبل {{ date_from }}{% else %}رصيد افتتاحي{% endif %}
+                    {% if unexplained_opening and not date_from %}<small class="text-muted"> — رصيد/تسوية غير مسجَّلة بحركات (سابقة لتسجيل الحركات أو تعديل يدوي)</small>{% endif %}
+                </td>
+                <td class="text-end fw-bold">{{ "%.2f"|format(opening) }}</td>
+            </tr>
+            {% for r in rows %}
+            <tr>
+                <td class="text-nowrap">{{ (r.date|local).strftime('%Y-%m-%d %H:%M') if r.date else '-' }}</td>
+                <td>
+                    {% if r.kind == 'purchase' %}<span class="badge bg-warning text-dark">{{ r.label }}</span>
+                    {% elif r.kind == 'debt' %}<span class="badge bg-danger">{{ r.label }}</span>
+                    {% else %}<span class="badge bg-success">{{ r.label }}</span>{% endif %}
+                </td>
+                <td>{{ r.ref }}</td>
+                <td class="small">{{ r.desc }}{% if r.by %}<span class="text-muted"> · {{ r.by }}</span>{% endif %}</td>
+                {% if fx %}
+                <td class="text-end text-muted">{% if r.local %}{{ "{:,.2f}".format(r.local) }}{% endif %}</td>
+                <td class="text-end text-muted">{% if r.local %}{{ "%g"|format(r.rate|round(4)) }}{% endif %}</td>
+                {% endif %}
+                <td class="text-end st-credit">{% if r.credit %}{{ "%.2f"|format(r.credit) }}{% endif %}</td>
+                <td class="text-end st-debit">{% if r.debit %}{{ "%.2f"|format(r.debit) }}{% endif %}</td>
+                <td class="text-end fw-bold">{{ "%.2f"|format(r.balance) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="{{ 9 if fx else 7 }}" class="text-center text-muted py-3">لا توجد حركات في هذه الفترة</td></tr>
+            {% endfor %}
+        </tbody>
+        <tfoot class="table-light fw-bold">
+            <tr>
+                <td colspan="4">الإجمالي</td>
+                {% if fx %}<td></td><td></td>{% endif %}
+                <td class="text-end st-credit">{{ "%.2f"|format(total_credit) }}</td>
+                <td class="text-end st-debit">{{ "%.2f"|format(total_debit) }}</td>
+                <td class="text-end">{{ "%.2f"|format(closing) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+    </div>
+</div>
+<div class="small text-muted mt-2">المبالغ بعملة المورد ({{ cur }}){% if fx %}، وعمود "بالدينار" هو ما خرج من الخزينة فعلًا أو قيمة الفاتورة بسعر يومها{% endif %}. الرصيد الموجب = مستحق عليك للمورد، والسالب = مستحق لك عنده.</div>
+{% endblock %}

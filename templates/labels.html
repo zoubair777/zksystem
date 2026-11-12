@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}طباعة ملصقات الباركود{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-upc-scan"></i> طباعة ملصقات الباركود</h4>
+    {% if purchase %}<span class="badge bg-info text-dark fs-6">من فاتورة الشراء {{ purchase.purchase_number }} (بنفس الكميات المستلمة)</span>{% endif %}
+</div>
+
+<form method="POST" action="{{ url_for('labels_print') }}" id="labelsForm">
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card mb-3"><div class="card-body">
+            <label class="form-label fw-bold">امسح الباركود أو اكتب اسم المنتج</label>
+            <div class="position-relative">
+                <input type="text" id="lblSearch" class="form-control form-control-lg" placeholder="امسح ثم Enter — نفس الباركود مرتين يزيد العدد" autocomplete="off" autofocus>
+                <div id="lblResults" class="list-group position-absolute w-100 shadow" style="z-index:20; max-height:320px; overflow:auto"></div>
+            </div>
+            <div id="lblMsg" class="small mt-1"></div>
+        </div></div>
+
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>المنتجات <span class="text-muted small">(عدد الملصقات لكل منتج)</span></span>
+                <button type="button" class="btn btn-sm btn-outline-danger" id="lblClear"><i class="bi bi-x-lg"></i> مسح الكل</button>
+            </div>
+            <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0" id="lblTable">
+                <thead><tr><th>المنتج</th><th>المقاس / اللون</th><th class="text-end">السعر</th><th class="text-end">المخزون</th><th style="width:230px">عدد الملصقات</th><th></th></tr></thead>
+                <tbody></tbody>
+            </table>
+            </div>
+            <div class="card-footer d-flex justify-content-between">
+                <span>إجمالي الملصقات</span><strong id="lblTotal">0</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-3"><div class="card-body">
+            <label class="form-label fw-bold">طابعة الملصقات</label>
+            <select name="printer" id="lblPrinter" class="form-select mb-3">
+                {% for p, port in settings.printers %}<option value="{{ p }}" {{ 'selected' if p == settings.printer }}>{{ p }} — {{ port }}</option>{% else %}<option value="">لا توجد طابعات معرّفة</option>{% endfor %}
+            </select>
+            <div class="fw-bold mb-2">مقاس الملصق (مم)</div>
+            <div class="row g-2 mb-2">
+                <div class="col-4"><label class="form-label small mb-1">العرض</label><input type="number" step="0.5" min="20" max="110" name="width" id="lblW" class="form-control" value="{{ '%g'|format(settings.width) }}"></div>
+                <div class="col-4"><label class="form-label small mb-1">الطول</label><input type="number" step="0.5" min="15" max="80" name="height" id="lblH" class="form-control" value="{{ '%g'|format(settings.height) }}"></div>
+                <div class="col-4"><label class="form-label small mb-1" title="الفراغ بين ملصق والتالي">الفراغ</label><input type="number" step="0.5" min="0" max="10" name="gap" class="form-control" value="{{ '%g'|format(settings.gap) }}"></div>
+            </div>
+            <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="flip" value="1" id="lblFlip" {{ 'checked' if settings.flip }}><label class="form-check-label" for="lblFlip">اقلب الطباعة (لو طلع الملصق بالمقلوب)</label></div>
+            <div class="fw-bold mb-2">شن يطلع على الملصق</div>
+            {% for key, label in (('company', 'اسم المحل'), ('name', 'اسم المنتج'), ('attrs', 'المقاس واللون'), ('price', 'السعر'), ('code', 'رقم الكود تحت الباركود')) %}
+            <div class="form-check"><input class="form-check-input lbl-f" type="checkbox" name="f_{{ key }}" value="1" id="f_{{ key }}" data-key="{{ key }}" {{ 'checked' if key in settings.fields }}><label class="form-check-label" for="f_{{ key }}">{{ label }}</label></div>
+            {% endfor %}
+            <div class="form-text mt-2">المقاس والخيارات تنحفظ للمرة الجاية.</div>
+        </div></div>
+
+        <div class="card mb-3"><div class="card-body text-center">
+            <div class="small text-muted mb-2">الملصق كما سيطلع بالضبط (أول منتج في القائمة)</div>
+            <img id="lblPreview" class="border border-dark bg-white" style="image-rendering:pixelated; max-width:100%" alt="">
+            <div id="lblPreviewEmpty" class="text-muted small py-4">أضف منتجًا لتشوف الملصق</div>
+        </div></div>
+
+        <div id="hiddenRows"></div>
+        <button type="button" class="btn btn-primary btn-lg w-100" id="lblPrintBtn" disabled><i class="bi bi-printer"></i> طباعة الملصقات</button>
+        <div id="lblPrintMsg" class="small mt-2"></div>
+        <button type="submit" class="btn btn-link btn-sm w-100 mt-1 text-muted" id="lblBrowserBtn" disabled>طباعة من شاشة المتصفح (طريقة احتياطية)</button>
+    </div>
+</div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const CUR = {{ currency|tojson }}, MAX = {{ max_total }};
+    const searchUrl = {{ url_for('labels_search')|tojson }};
+    const rows = new Map();   // id -> منتج + qty
+    {{ rows|tojson }}.forEach(r => rows.set(r.id, r));
+    const $ = id => document.getElementById(id);
+    const esc = window.zgEscape || (s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+    const fmt = n => (Math.round(n * 100) / 100).toLocaleString('en', {maximumFractionDigits: 2});
+
+    function msg(text, type) { $('lblMsg').innerHTML = `<span class="text-${type}">${esc(text)}</span>`; }
+
+    function render() {
+        const body = document.querySelector('#lblTable tbody');
+        if (!rows.size) {
+            body.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">امسح باركود أو ابحث عن منتج</td></tr>';
+        } else {
+            body.innerHTML = [...rows.values()].map(r => `
+                <tr class="${r.ok ? '' : 'table-warning'}">
+                    <td>${esc(r.name)}<div class="small text-muted font-monospace" dir="ltr" style="text-align:right">${esc(r.barcode)}</div>
+                        ${r.ok ? '' : '<div class="small text-danger">الكود فيه حروف عربية أو فارغ، ما ينطبعش باركود. غيّره من تعديل المنتج.</div>'}</td>
+                    <td>${esc([r.size, r.color].filter(Boolean).join(' / ') || '-')}</td>
+                    <td class="text-end">${fmt(r.price)}</td>
+                    <td class="text-end">${r.stock}</td>
+                    <td><div class="input-group input-group-sm">
+                        <button type="button" class="btn btn-outline-secondary q-btn" data-id="${r.id}" data-d="-1">−</button>
+                        <input type="number" min="1" max="999" class="form-control text-center q-in" data-id="${r.id}" value="${r.qty}" ${r.ok ? '' : 'disabled'}>
+                        <button type="button" class="btn btn-outline-secondary q-btn" data-id="${r.id}" data-d="1">+</button>
+                        <button type="button" class="btn btn-outline-secondary q-stock" data-id="${r.id}" title="عدد الملصقات = الكمية الموجودة في المخزون">كل المخزون</button></div></td>
+                    <td><button type="button" class="btn btn-sm btn-outline-danger del" data-id="${r.id}"><i class="bi bi-x"></i></button></td>
+                </tr>`).join('');
+        }
+        const ok = [...rows.values()].filter(r => r.ok && r.qty > 0);
+        $('hiddenRows').innerHTML = ok.map(r => `<input type="hidden" name="product_id[]" value="${r.id}"><input type="hidden" name="qty[]" value="${r.qty}">`).join('');
+        const total = ok.reduce((a, r) => a + r.qty, 0);
+        $('lblTotal').textContent = total;
+        $('lblPrintBtn').disabled = $('lblBrowserBtn').disabled = !total || total > MAX;
+        preview();
+    }
+
+    function add(p, qty) {
+        const cur = rows.get(p.id);
+        if (cur) cur.qty = Math.min(999, cur.qty + (qty || 1));
+        else rows.set(p.id, Object.assign({}, p, {qty: qty || 1}));
+        msg(`تمت الإضافة: ${p.name} (${p.barcode}) — العدد ${rows.get(p.id).qty}`, p.ok ? 'success' : 'warning');
+        render();
+    }
+
+    let timer = null;
+    async function search(q, enter) {
+        const res = await fetch(searchUrl + '?q=' + encodeURIComponent(q));
+        const list = res.ok ? await res.json() : [];
+        const box = $('lblResults');
+        if (enter && list.length === 1) { box.innerHTML = ''; add(list[0]); $('lblSearch').value = ''; return; }
+        if (enter && !list.length) { box.innerHTML = ''; msg('ما لقيتش منتج بهذا الكود أو الاسم', 'danger'); return; }
+        box.innerHTML = list.map((p, i) => `<button type="button" class="list-group-item list-group-item-action pick" data-i="${i}">
+            ${esc(p.name)} <span class="text-muted small">${esc([p.size, p.color].filter(Boolean).join(' / '))}</span>
+            <span class="float-start font-monospace small" dir="ltr">${esc(p.barcode)}</span></button>`).join('');
+        box.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => {
+            add(list[+b.dataset.i]); box.innerHTML = ''; $('lblSearch').value = ''; $('lblSearch').focus();
+        }));
+    }
+    $('lblSearch').addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const q = e.target.value.trim();
+        if (q) search(q, true);
+    });
+    $('lblSearch').addEventListener('input', e => {
+        clearTimeout(timer);
+        const q = e.target.value.trim();
+        if (q.length < 2) { $('lblResults').innerHTML = ''; return; }
+        timer = setTimeout(() => search(q, false), 250);
+    });
+
+    document.querySelector('#lblTable').addEventListener('click', e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const r = rows.get(+b.dataset.id); if (!r) return;
+        if (b.classList.contains('del')) rows.delete(r.id);
+        else if (b.classList.contains('q-btn')) r.qty = Math.max(1, Math.min(999, r.qty + +b.dataset.d));
+        else if (b.classList.contains('q-stock')) r.qty = Math.max(1, Math.min(999, r.stock || 1));
+        render();
+    });
+    document.querySelector('#lblTable').addEventListener('change', e => {
+        if (!e.target.classList.contains('q-in')) return;
+        const r = rows.get(+e.target.dataset.id);
+        r.qty = Math.max(1, Math.min(999, parseInt(e.target.value) || 1));
+        render();
+    });
+    $('lblClear').addEventListener('click', () => { if (rows.size && confirm('مسح كل المنتجات من القائمة؟')) { rows.clear(); render(); } });
+
+    // المعاينة صورة من الخادم بنفس الرسم المرسل للطابعة نقطة بنقطة (ليست تقريبًا)
+    const previewUrl = {{ url_for('labels_preview')|tojson }};
+    let pvTimer = null;
+    function preview() {
+        clearTimeout(pvTimer);
+        pvTimer = setTimeout(() => {
+            const r = [...rows.values()].find(x => x.ok);
+            $('lblPreview').style.display = r ? '' : 'none';
+            $('lblPreviewEmpty').style.display = r ? 'none' : '';
+            if (!r) return;
+            const q = new URLSearchParams({product_id: r.id, width: $('lblW').value, height: $('lblH').value});
+            document.querySelectorAll('.lbl-f').forEach(c => { if (c.checked) q.set('f_' + c.dataset.key, '1'); });
+            $('lblPreview').src = previewUrl + '?' + q.toString();
+        }, 250);
+    }
+    ['lblW', 'lblH'].forEach(id => $(id).addEventListener('input', preview));
+    document.querySelectorAll('.lbl-f').forEach(c => c.addEventListener('change', preview));
+
+    $('lblPrintBtn').addEventListener('click', async () => {
+        const btn = $('lblPrintBtn'), out = $('lblPrintMsg');
+        btn.disabled = true;
+        out.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري الإرسال للطابعة...';
+        try {
+            const res = await fetch({{ url_for('labels_print_direct')|tojson }}, {method: 'POST', body: new FormData($('labelsForm'))});
+            const data = await res.json();
+            out.innerHTML = data.ok ? `<span class="text-success fw-bold">${esc(data.message)}</span>`
+                                    : `<span class="text-danger">${esc(data.error || 'صار خطأ')}</span>`;
+        } catch (e) {
+            out.innerHTML = '<span class="text-danger">تعذّر الاتصال بالخادم.</span>';
+        }
+        btn.disabled = false;
+    });
+    render();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}التقرير المالي (نقد/بنك){% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4 class="mb-0">التقرير المالي - حركة النقد والبنك</h4>
+    <div class="d-flex gap-2">
+        <button onclick="window.print()" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer"></i> طباعة</button>
+        <a href="{{ url_for('export_financial_excel_route', start=start, end=end, shift_id=shift_id, payment_method=payment_method) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+        <a href="{{ url_for('export_financial_pdf_route', start=start, end=end, shift_id=shift_id, payment_method=payment_method) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    </div>
+</div>
+
+<div class="card mb-4 no-print">
+    <div class="card-body py-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">من تاريخ</label>
+                <input type="date" name="start" value="{{ start }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">إلى تاريخ</label>
+                <input type="date" name="end" value="{{ end }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">الوردية (اختياري)</label>
+                <select name="shift_id" class="form-select form-select-sm">
+                    <option value="">كل الورديات</option>
+                    {% for s in shifts %}
+                    <option value="{{ s.id }}" {{ 'selected' if shift_id == s.id }}>#{{ s.id }} - {{ s.user.full_name if s.user else '' }} ({{ (s.opened_at|local).strftime('%Y-%m-%d %H:%M') }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">طريقة الدفع</label>
+                <select name="payment_method" class="form-select form-select-sm">
+                    <option value="" {{ 'selected' if not payment_method }}>الكل (نقد وبنك)</option>
+                    <option value="cash" {{ 'selected' if payment_method=='cash' }}>نقدي فقط</option>
+                    <option value="bank" {{ 'selected' if payment_method=='bank' }}>بنكي فقط</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-funnel"></i> تصفية</button>
+                <a href="{{ url_for('financial_report') }}" class="btn btn-sm btn-outline-secondary">إعادة تعيين</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<h5 class="mb-2">الرصيد النهائي (تراكمي حتى {{ end if end else 'الآن' }})</h5>
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="stat-card bg-success-soft"><i class="bi bi-cash-stack"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(final_balance.net_cash) }}</span><span class="stat-label">رصيد الصندوق (نقدًا) - {{ currency }}</span></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card bg-info-soft"><i class="bi bi-bank"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(final_balance.net_bank) }}</span><span class="stat-label">رصيد البنك - {{ currency }}</span></div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mb-2">حركة الفترة المحددة</h5>
+<div class="table-responsive mb-4">
+    <table class="table table-bordered text-center bg-white">
+        <thead class="table-light">
+            <tr><th>البند</th><th>نقدي</th><th>بنكي</th><th>غير محدد</th><th>الإجمالي</th></tr>
+        </thead>
+        <tbody>
+            <tr><td class="text-start">مبيعات نقدية/بنكية</td><td>{{ "%.2f"|format(period.cash_sales) }}</td><td><a href="{{ url_for('bank_sales_report', start=start, end=end, shift_id=shift_id or '') }}" class="text-decoration-none fw-bold" title="تفصيل كل عملية بنكية بتاريخها">{{ "%.2f"|format(period.bank_sales) }} <i class="bi bi-box-arrow-up-left small"></i></a></td><td>-</td><td class="fw-bold">{{ "%.2f"|format(period.cash_sales + period.bank_sales) }}</td></tr>
+            <tr><td class="text-start">مبيعات آجلة (دين)</td><td colspan="3" class="text-muted">-</td><td class="fw-bold">{{ "%.2f"|format(period.credit_sales) }}</td></tr>
+            <tr><td class="text-start">تحصيل من عملاء (دين سابق)</td><td class="text-success">{{ "%.2f"|format(period.collected_cash) }}</td><td class="text-success">{{ "%.2f"|format(period.collected_bank) }}</td><td>{{ "%.2f"|format(period.collected_unspecified) }}</td><td class="fw-bold text-success">{{ "%.2f"|format(period.collected_cash + period.collected_bank + period.collected_unspecified) }}</td></tr>
+            <tr><td class="text-start">إيرادات أخرى</td><td class="text-success">{{ "%.2f"|format(period.income_cash) }}</td><td class="text-success">{{ "%.2f"|format(period.income_bank) }}</td><td>{{ "%.2f"|format(period.income_unspecified) }}</td><td class="fw-bold text-success">{{ "%.2f"|format(period.income_cash + period.income_bank + period.income_unspecified) }}</td></tr>
+            <tr><td class="text-start">مصروفات</td><td class="text-danger">{{ "%.2f"|format(period.expense_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.expense_bank) }}</td><td>{{ "%.2f"|format(period.expense_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.expense_cash + period.expense_bank + period.expense_unspecified) }}</td></tr>
+            <tr><td class="text-start">مدفوعات لموردين</td><td class="text-danger">{{ "%.2f"|format(period.supplier_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.supplier_bank) }}</td><td>{{ "%.2f"|format(period.supplier_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.supplier_cash + period.supplier_bank + period.supplier_unspecified) }}</td></tr>
+            <tr><td class="text-start">رواتب مدفوعة (إجمالي، قبل خصم أي سلفة)</td><td class="text-danger">{{ "%.2f"|format(period.salary_payment_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.salary_payment_bank) }}</td><td>{{ "%.2f"|format(period.salary_payment_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.salary_payment_cash + period.salary_payment_bank + period.salary_payment_unspecified) }}</td></tr>
+            <tr><td class="text-start">سلف موظفين (خارجة)</td><td class="text-danger">{{ "%.2f"|format(period.employee_advance_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.employee_advance_bank) }}</td><td>{{ "%.2f"|format(period.employee_advance_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.employee_advance_cash + period.employee_advance_bank + period.employee_advance_unspecified) }}</td></tr>
+            <tr><td class="text-start">تسديد سلف موظفين (داخلة)</td><td class="text-success">{{ "%.2f"|format(period.employee_repayment_cash) }}</td><td class="text-success">{{ "%.2f"|format(period.employee_repayment_bank) }}</td><td>{{ "%.2f"|format(period.employee_repayment_unspecified) }}</td><td class="fw-bold text-success">{{ "%.2f"|format(period.employee_repayment_cash + period.employee_repayment_bank + period.employee_repayment_unspecified) }}</td></tr>
+            <tr><td class="text-start">مرتجعات مبيعات (فلوس خارجة)</td><td class="text-danger">{{ "%.2f"|format(period.sales_return_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.sales_return_bank) }}</td><td>{{ "%.2f"|format(period.sales_return_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.sales_return_cash + period.sales_return_bank + period.sales_return_unspecified) }}</td></tr>
+            <tr><td class="text-start">سحوبات مالك <a href="{{ url_for('owner_withdrawals_report', start=start, end=end) }}" class="small">(تفصيل بالتواريخ)</a></td><td class="text-danger">{{ "%.2f"|format(period.owner_withdrawal_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.owner_withdrawal_bank) }}</td><td>{{ "%.2f"|format(period.owner_withdrawal_unspecified) }}</td><td class="fw-bold text-danger"><a href="{{ url_for('owner_withdrawals_report', start=start, end=end) }}" class="text-danger text-decoration-none" title="تفصيل كل سحبة بتاريخها">{{ "%.2f"|format(period.owner_withdrawal_cash + period.owner_withdrawal_bank + period.owner_withdrawal_unspecified) }} <i class="bi bi-box-arrow-up-left small"></i></a></td></tr>
+            <tr><td class="text-start">قروض أخذها المحل (فلوس داخلة)</td><td class="text-success">{{ "%.2f"|format(period.loan_received_cash) }}</td><td class="text-success">{{ "%.2f"|format(period.loan_received_bank) }}</td><td>{{ "%.2f"|format(period.loan_received_unspecified) }}</td><td class="fw-bold text-success">{{ "%.2f"|format(period.loan_received_cash + period.loan_received_bank + period.loan_received_unspecified) }}</td></tr>
+            <tr><td class="text-start">تسديد قروض (فلوس خارجة)</td><td class="text-danger">{{ "%.2f"|format(period.loan_repayment_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.loan_repayment_bank) }}</td><td>{{ "%.2f"|format(period.loan_repayment_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.loan_repayment_cash + period.loan_repayment_bank + period.loan_repayment_unspecified) }}</td></tr>
+            <tr><td class="text-start">مصاريف شراء: شحن وجمارك (تدخل في تكلفة البضاعة)</td><td class="text-danger">{{ "%.2f"|format(period.purchase_cost_cash) }}</td><td class="text-danger">{{ "%.2f"|format(period.purchase_cost_bank) }}</td><td>{{ "%.2f"|format(period.purchase_cost_unspecified) }}</td><td class="fw-bold text-danger">{{ "%.2f"|format(period.purchase_cost_cash + period.purchase_cost_bank + period.purchase_cost_unspecified) }}</td></tr>
+            <tr class="table-secondary"><td class="text-start fw-bold">صافي حركة الفترة (تدفق نقدي، وليس ربحًا)</td><td class="fw-bold">{{ "%.2f"|format(period.net_cash) }}</td><td class="fw-bold">{{ "%.2f"|format(period.net_bank) }}</td><td>-</td><td class="fw-bold">{{ "%.2f"|format(period.net_cash + period.net_bank) }}</td></tr>
+        </tbody>
+    </table>
+    <p class="small text-muted">"غير محدد" = حركات حسابات قديمة لم تُسجَّل لها خانة نقد/بنك بعد إضافة هذه الخاصية.</p>
+</div>
+
+<h5 class="mb-2">الربح الصافي (قائمة الدخل) — للفترة والفلتر المحددين أعلاه</h5>
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card bg-light"><i class="bi bi-receipt"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(profit.total_sales) }}</span><span class="stat-label">إجمالي المبيعات ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-light"><i class="bi bi-percent"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(profit.discounts) }}</span><span class="stat-label">خصومات عملاء ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-light"><i class="bi bi-arrow-return-left"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(profit.returns_value) }}</span><span class="stat-label">مرتجعات مبيعات ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-light"><i class="bi bi-box-seam"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(profit.cogs) }}</span><span class="stat-label">تكلفة البضاعة المباعة ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-light"><i class="bi bi-arrow-up-circle"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(profit.operating_expenses) }}</span><span class="stat-label">مصروفات تشغيلية (فيها خسائر المخزون) ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card {{ 'bg-success-soft' if profit.net_profit >= 0 else 'bg-danger-soft' }}"><i class="bi bi-graph-up-arrow"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(profit.net_profit) }}</span><span class="stat-label">الربح الصافي ({{ currency }})</span></div>
+        </div>
+    </div>
+</div>
+<p class="small text-muted mb-4">
+    الربح الصافي = (المبيعات − الخصومات − المرتجعات) − تكلفة البضاعة المباعة الصافية (بعد خصم
+    تكلفة المرتجعات) − المصروفات التشغيلية (بما فيها دفع الرواتب وخسائر تسوية المخزون).
+    السلف وسحوبات المالك والقروض وتسديداتها <b>مستبعدة عمدًا</b> من هذا الحساب
+    لأنها بنود ميزانية عمومية (ذمم/حقوق ملكية) وليست ربحًا أو خسارة.
+    تكلفة البضاعة محسوبة بسعر الشراء الحالي للمنتج (متوسط مرجّح يتحدّث تلقائيًا مع كل عملية شراء).
+</p>
+
+<h5 class="mb-2">تفاصيل المصروفات ({{ expenses_detail|length }})</h5>
+<div class="card mb-4">
+    <table class="table mb-0">
+        <thead><tr><th>التاريخ</th><th>طريقة الدفع</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+        <tbody>
+        {% for e in expenses_detail %}
+            <tr>
+                <td>{{ (e.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{% if e.payment_method=='bank' %}بنكي{% elif e.payment_method=='cash' %}نقدي{% else %}-{% endif %}</td>
+                <td class="text-danger">{{ "%.2f"|format(e.amount) }}</td>
+                <td>{{ e.note or '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-3">لا توجد مصروفات في هذه الفترة</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h5 class="mb-2">جميع الحركات والفواتير المرتبطة ({{ transactions|length }})</h5>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>التاريخ</th><th>النوع</th><th>المرجع</th><th>طريقة الدفع</th><th>المبلغ</th></tr></thead>
+            <tbody>
+            {% for t in transactions %}
+                <tr>
+                    <td>{{ (t.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ t.type }}</td>
+                    <td>
+                        {% if t.invoice_id %}<a href="{{ url_for('invoice_print', iid=t.invoice_id) }}">{{ t.ref }}</a>
+                        {% else %}{{ t.ref }}{% endif %}
+                    </td>
+                    <td>{{ t.method }}</td>
+                    <td>{{ "%.2f"|format(t.amount) }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5" class="text-center text-muted py-3">لا توجد حركات في هذه الفترة</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

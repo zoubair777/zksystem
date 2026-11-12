@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}المشتريات{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>فواتير المشتريات</h4>
+    <div class="d-flex gap-2">
+    {% if current_user.is_manager_or_admin() %}<a href="{{ url_for('recalc_product_costs') }}" class="btn btn-outline-warning"><i class="bi bi-currency-exchange"></i> تصحيح تكلفة المنتجات</a>{% endif %}
+    <a href="{{ url_for('add_purchase') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> فاتورة شراء جديدة</a>
+    </div>
+</div>
+<div class="card">
+    <table class="table table-hover mb-0">
+        <thead><tr><th>رقم الفاتورة</th><th>المورد</th><th>المخزن</th><th>التاريخ</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي للمورد</th><th></th></tr></thead>
+        <tbody>
+        {% for p in purchases %}
+            <tr>
+                <td>{{ p.purchase_number }}</td>
+                <td>{% if p.supplier %}<a href="{{ url_for('supplier_statement', sid=p.supplier.id) }}" title="كشف حساب المورد">{{ p.supplier.name }}</a>{% else %}-{% endif %}</td>
+                <td>{{ p.warehouse.name }}</td>
+                <td>{{ (p.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                {% set rem = (p.total or 0) - (p.paid_amount or 0) %}
+                <td>{{ "%.2f"|format(p.total) }} <small class="text-muted">{{ p.currency_code or 'LYD' }}</small>
+                    {% if p.extra_cost %}<div class="small text-muted">+ {{ "%.2f"|format(p.extra_cost) }} د.ل شحن/مصاريف</div>{% endif %}</td>
+                <td>{{ "%.2f"|format(p.paid_amount) }}</td>
+                <td>{% if rem > 0.005 %}<span class="badge bg-danger">{{ "%.2f"|format(rem) }}</span>{% else %}<span class="badge bg-success">مسددة</span>{% endif %}</td>
+                <td>
+                    <a href="{{ url_for('barcode_labels', purchase_id=p.id) }}" class="btn btn-sm btn-outline-primary" title="طباعة ملصقات بكميات هذه الفاتورة"><i class="bi bi-upc-scan"></i> ملصقات</a>
+                    {% if current_user.is_manager_or_admin() %}
+                    <a href="{{ url_for('purchase_return', pid=p.id) }}" class="btn btn-sm btn-outline-warning" title="إرجاع بضاعة للمورد"><i class="bi bi-box-arrow-up"></i> إرجاع{% if p.returns %} ({{ p.returns|length }}){% endif %}</a>
+                    <a href="{{ url_for('edit_purchase', pid=p.id) }}" class="btn btn-sm btn-outline-secondary" title="تعديل"><i class="bi bi-pencil"></i></a>
+                    <a href="{{ url_for('delete_purchase', pid=p.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف فاتورة الشراء؟ سيتم عكس أثرها على المخزون ورصيد المورد.')"><i class="bi bi-trash"></i></a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="8" class="text-center text-muted py-3">لا توجد فواتير مشتريات</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

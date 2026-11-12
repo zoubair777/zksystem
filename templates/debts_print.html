@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>تقرير ديون العملاء</title>
+<link href="{{ url_for('static', filename='vendor/cairo/cairo.css') }}" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Cairo', sans-serif; padding: 24px; color: #222; font-size: 13px; }
+.head { display: flex; justify-content: space-between; border-bottom: 3px solid #333; padding-bottom: 10px; margin-bottom: 14px; }
+.head h2 { font-size: 1.4em; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
+th { background: #f2f2f2; }
+td.name { text-align: right; font-weight: bold; }
+td.amount { font-weight: bold; color: #c0392b; white-space: nowrap; }
+tfoot td { background: #f2f2f2; font-weight: bold; font-size: 1.05em; }
+.toolbar { margin-top: 18px; display: flex; gap: 10px; }
+.toolbar button, .toolbar a { padding: 8px 22px; border: none; border-radius: 6px; color: #fff; text-decoration: none; cursor: pointer; font-family: inherit; }
+@media print { .toolbar { display: none; } body { padding: 0; } @page { size: A4; margin: 12mm; } }
+</style>
+</head>
+<body>
+<div class="head">
+    <div>
+        <h2>{{ company }}</h2>
+        {% if company_phone %}<p>{{ company_phone }}</p>{% endif %}
+        <p style="font-weight:bold; margin-top:4px">تقرير ديون العملاء{% if q %} (بحث: {{ q }}){% endif %}</p>
+    </div>
+    <div style="text-align:left">
+        <p><strong>التاريخ:</strong> {{ printed_at.strftime('%Y-%m-%d %H:%M') }}</p>
+        <p><strong>عدد العملاء:</strong> {{ rows|length }}</p>
+        <p><strong>الإجمالي:</strong> {{ "{:,.2f}".format(total) }} {{ currency }}</p>
+    </div>
+</div>
+
+<table>
+    <thead><tr><th>#</th><th>العميل</th><th>الهاتف</th><th>المستحق ({{ currency }})</th><th>آخر تحصيل</th><th>آخر شراء بالآجل</th><th>أيام بدون دفع</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td class="name">{{ r.customer.name }}</td>
+            <td dir="ltr">{{ r.customer.phone or '-' }}</td>
+            <td class="amount">{{ "{:,.2f}".format(r.balance) }}</td>
+            <td>{{ (r.last_payment|local).strftime('%Y-%m-%d') if r.last_payment else 'لم يدفع' }}</td>
+            <td>{{ (r.last_purchase|local).strftime('%Y-%m-%d') if r.last_purchase else '-' }}</td>
+            <td>{{ r.days if r.days is not none else '-' }}</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="7">لا توجد ديون مستحقة</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="3">الإجمالي</td><td class="amount">{{ "{:,.2f}".format(total) }}</td><td colspan="3"></td></tr></tfoot>
+</table>
+
+<div class="toolbar">
+    <button onclick="window.print()" style="background:#1a73e8">طباعة</button>
+    <a href="{{ url_for('debts_export', fmt='pdf', q=q, sort=sort) }}" style="background:#c0392b">PDF</a>
+    <a href="{{ url_for('debts', q=q, sort=sort) }}" style="background:#6c757d">رجوع</a>
+</div>
+</body>
+</html>

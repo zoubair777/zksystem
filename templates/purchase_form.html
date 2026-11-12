@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+{% block title %}{{ "تعديل فاتورة شراء" if purchase else "فاتورة شراء جديدة" }}{% endblock %}
+{% block content %}
+<h4 class="mb-3">{% if purchase %}تعديل فاتورة شراء {{ purchase.purchase_number }}{% else %}فاتورة شراء جديدة (توريد بضاعة){% endif %}</h4>
+{% if purchase %}<div class="alert alert-warning small">عند الحفظ يُعكس أثر الفاتورة القديمة بالكامل (المخزون، رصيد المورد، الدفعة، الخزينة) ثم يُطبَّق ما تدخله هنا. رقم الفاتورة وتاريخها يبقيان كما هما.</div>{% endif %}
+<div class="card"><div class="card-body">
+    <form method="POST">
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label">المورد</label>
+                <select name="supplier_id" class="form-select">
+                    <option value="">بدون مورد</option>
+                    {% for s in suppliers %}<option value="{{ s.id }}" data-currency="{{ s.currency_code or 'LYD' }}" data-balance="{{ supplier_balances.get(s.id, 0) }}" {% if purchase and purchase.supplier_id==s.id %}selected{% endif %}>{{ s.name }} — {{ s.currency_code or 'LYD' }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">المخزن المستقبل للبضاعة</label>
+                <select name="warehouse_id" class="form-select" required>
+                    {% for w in warehouses %}<option value="{{ w.id }}" {% if purchase and purchase.warehouse_id==w.id %}selected{% endif %}>{{ w.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">المبلغ المدفوع الآن</label>
+                <input type="number" step="0.01" name="paid_amount" class="form-control" value="{{ purchase.paid_amount if purchase else 0 }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">طريقة دفع المبلغ المدفوع</label>
+                <select name="payment_method" class="form-select">
+                    <option value="cash">نقدًا (من خزينة)</option>
+                    <option value="bank" {% if pay_entry and pay_entry.payment_method=='bank' %}selected{% endif %}>تحويل بنكي</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">الخزينة (للنقد)</label>
+                <select name="cashbox_id" class="form-select">
+                    <option value="">-- اختر الخزينة --</option>
+                    {% for box in cashboxes %}<option value="{{ box.id }}" {% if (pay_entry and pay_entry.cashbox_id==box.id) or (not pay_entry and current_user.cashbox_id==box.id and not current_user.is_manager_or_admin()) %}selected{% endif %}>{{ box.name }} (الرصيد: {{ "%.2f"|format(box.balance or 0) }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">عملة الفاتورة <a href="{{ url_for('currencies_page') }}" class="small text-decoration-none">(إضافة عملة)</a></label>
+                <select name="currency_code" id="currencyCode" class="form-select">
+                    {% for c in currencies %}<option value="{{ c.code }}" {% if (purchase and c.code==purchase.currency_code) or (not purchase and c.code=='LYD') %}selected{% endif %}>{{ c.code }} — {{ c.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4" id="exchangeRateWrap">
+                <label class="form-label">سعر الصرف: كم دينار ليبي = 1 وحدة من العملة</label>
+                <input type="number" step="0.0001" min="0.0001" name="exchange_rate" id="exchangeRate" class="form-control" value="{{ purchase.exchange_rate if purchase else 1 }}">
+                <div class="form-text">يُقترح آخر سعر استخدمته لهذه العملة، ويُثبَّت مع هذه الفاتورة ويمكن تعديله يدوياً.</div>
+            </div>
+            <div class="col-md-4"><label class="form-label">ملخص التحويل</label><div class="form-control bg-light" id="fxPreview">1 LYD = 1.0000 LYD</div>
+                <div id="fxWarn" class="form-text text-warning d-none">عملة المورد تختلف عن عملة الفاتورة؛ رصيد المورد يُسجَّل بعملة الفاتورة، فالأفضل إبقاء كل مورد بعملة واحدة.</div></div>
+        </div>
+
+        <div class="row g-3 mb-3 p-2 rounded" style="background:var(--bs-light)">
+            <div class="col-md-3">
+                <label class="form-label">مصاريف إضافية بالدينار (شحن، جمارك)</label>
+                <input type="number" step="0.01" min="0" name="extra_cost" class="form-control" value="{{ purchase.extra_cost or 0 if purchase else 0 }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">بيانها</label>
+                <input type="text" name="extra_cost_note" class="form-control" placeholder="شحن من تركيا..." value="{{ purchase.extra_cost_note or '' if purchase else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">طريقة دفع المصاريف</label>
+                <select name="extra_payment_method" class="form-select">
+                    <option value="cash">نقدًا (من خزينة)</option>
+                    <option value="bank" {% if extra_entry and extra_entry.payment_method=='bank' %}selected{% endif %}>تحويل بنكي</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">خزينة المصاريف (للنقد)</label>
+                <select name="extra_cashbox_id" class="form-select">
+                    <option value="">-- اختر الخزينة --</option>
+                    {% for box in cashboxes %}<option value="{{ box.id }}" {% if extra_entry and extra_entry.cashbox_id==box.id %}selected{% endif %}>{{ box.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-12 form-text mt-0">هذه المصاريف تتوزّع على القطع وتدخل في تكلفتها، فيطلع ربحك الحقيقي عند البيع. ما تدخلش في حساب المورد، وما تسجّلهاش مرة ثانية كمصروف.</div>
+        </div>
+
+        <div id="dueBox" class="alert alert-secondary small py-2 mb-3"></div>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold"><i class="bi bi-upc-scan"></i> امسح باركود المنتج لإضافته تلقائيًا</label>
+            <input type="text" id="barcodeScanInput" class="form-control form-control-lg" placeholder="امسح الباركود هنا ثم اضغط Enter" autofocus>
+            <div id="scanMsg" class="small mt-1"></div>
+        </div>
+
+        <table class="table" id="itemsTable">
+            <thead><tr><th>الباركود / المنتج <small class="text-muted fw-normal">(اكتب الباركود في الخانة العلوية ثم Enter)</small></th><th>الكمية</th><th>سعر الوحدة</th><th></th></tr></thead>
+            <tbody>
+                {% for it in (purchase.items if purchase and purchase.items else [None]) %}
+                <tr>
+                    <td>
+                        <input type="text" class="form-control form-control-sm font-monospace mb-1 bc-input" dir="ltr" placeholder="الباركود" autocomplete="off" value="{{ it.product.barcode if it and it.product else '' }}">
+                        <select name="product_id[]" class="form-select" {% if it %}data-filled="1"{% endif %}>
+                            {% for p in products %}<option value="{{ p.id }}" {% if it and it.product_id==p.id %}selected{% endif %}>{{ p.name }} ({{ p.barcode }})</option>{% endfor %}
+                        </select>
+                    </td>
+                    <td><input type="number" name="quantity[]" class="form-control" value="{{ it.quantity if it else 1 }}" min="1"></td>
+                    <td><input type="number" step="0.01" name="unit_cost[]" class="form-control" value="{{ it.unit_cost if it else 0 }}"></td>
+                    <td><button type="button" class="btn btn-outline-danger btn-sm remove-row"><i class="bi bi-trash"></i></button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="button" id="addRow" class="btn btn-outline-secondary btn-sm mb-3"><i class="bi bi-plus"></i> إضافة صنف</button>
+        {% if can_add_product %}<button type="button" id="newProductBtn" class="btn btn-outline-primary btn-sm mb-3"><i class="bi bi-plus-circle"></i> منتج جديد غير مسجّل</button>{% endif %}
+        <br>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> {{ "حفظ التعديلات" if purchase else "حفظ الفاتورة" }}</button>
+        <a href="{{ url_for('purchases') }}" class="btn btn-outline-secondary">إلغاء</a>
+    </form>
+</div></div>
+
+{% if can_add_product %}
+<div class="modal fade" id="quickAddModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">إضافة منتج جديد</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+        <div id="qaMsg" class="alert alert-warning py-2 small d-none"></div>
+        <div id="qaErr" class="alert alert-danger py-2 small d-none"></div>
+        <form id="quickAddForm">
+            <div class="row g-2">
+                <div class="col-12"><label class="form-label">اسم المنتج *</label><input name="name" class="form-control" required></div>
+                <div class="col-12"><label class="form-label">الباركود <span class="text-muted small">(اتركه فارغًا للتوليد التلقائي)</span></label><input name="barcode" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">التصنيف</label><select name="category_id" class="form-select"><option value="">بدون تصنيف</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+                <div class="col-md-6"><label class="form-label">سعر البيع (د.ل) *</label><input name="sale_price" type="number" step="0.01" min="0" class="form-control" value="0" required></div>
+                <div class="col-md-6"><label class="form-label">المقاس</label><input name="size" class="form-control"></div>
+                <div class="col-md-6"><label class="form-label">اللون</label><input name="color" class="form-control"></div>
+            </div>
+            <div class="form-text mt-2">الكمية وتكلفة الشراء تُحدَّد من الفاتورة نفسها، فأدخلها في سطر المنتج بعد الإضافة.</div>
+        </form>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button><button type="button" class="btn btn-primary" id="qaSave">إضافة للفاتورة</button></div>
+</div></div></div>
+{% endif %}
+
+<template id="rowTemplate">
+    <tr>
+        <td>
+            <input type="text" class="form-control form-control-sm font-monospace mb-1 bc-input" dir="ltr" placeholder="الباركود" autocomplete="off">
+                        <select name="product_id[]" class="form-select">
+                {% for p in products %}<option value="{{ p.id }}">{{ p.name }} ({{ p.barcode }})</option>{% endfor %}
+            </select>
+        </td>
+        <td><input type="number" name="quantity[]" class="form-control" value="1" min="1"></td>
+        <td><input type="number" step="0.01" name="unit_cost[]" class="form-control" value="0"></td>
+        <td><button type="button" class="btn btn-outline-danger btn-sm remove-row"><i class="bi bi-trash"></i></button></td>
+    </tr>
+</template>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.getElementById('addRow').addEventListener('click', function () {
+    const tpl = document.getElementById('rowTemplate').content.cloneNode(true);
+    document.querySelector('#itemsTable tbody').appendChild(tpl);
+});
+document.querySelector('#itemsTable').addEventListener('click', function (e) {
+    if (e.target.closest('.remove-row')) {
+        const rows = document.querySelectorAll('#itemsTable tbody tr');
+        if (rows.length > 1) e.target.closest('tr').remove();
+    }
+});
+
+// ---------------------------------------------------------------------------
+// مسح الباركود لإضافة صنف تلقائيًا إلى فاتورة الشراء (يعمل مع أي قارئ باركود
+// متصل عبر USB، لأنه يعمل كلوحة مفاتيح عادية ويكتب في هذا الحقل ثم يرسل Enter)
+// ---------------------------------------------------------------------------
+const scanInput = document.getElementById('barcodeScanInput');
+const scanMsg = document.getElementById('scanMsg');
+
+function showScanMsg(text, type) {
+    scanMsg.innerHTML = `<span class="text-${type}">${text}</span>`;
+    setTimeout(() => (scanMsg.innerHTML = ''), 2500);
+}
+
+function findEmptyRow() {
+    const rows = document.querySelectorAll('#itemsTable tbody tr');
+    for (const row of rows) {
+        const select = row.querySelector('select[name="product_id[]"]');
+        const usedQty = row.querySelector('input[name="quantity[]"]');
+        if (select && !select.dataset.filled) return row;
+    }
+    return null;
+}
+
+scanInput.addEventListener('keypress', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const code = scanInput.value.trim();
+    scanInput.value = '';
+    if (!code) return;
+
+    fetch(`/pos/lookup?barcode=${encodeURIComponent(code)}`)
+        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(({ ok, data }) => {
+            if (!ok) {
+                if (canAddProduct) { openQuickAdd(code, 'هذا الباركود غير مسجّل في المنتجات - أضفه كمنتج جديد:'); return; }
+                showScanMsg(data.error || 'لم يتم العثور على المنتج بهذا الباركود', 'danger');
+                return;
+            }
+            // إن وُجد صنف بنفس المنتج مسبقًا في الجدول، نزيد كميته بدل تكراره
+            const existingRow = Array.from(document.querySelectorAll('#itemsTable tbody tr')).find(row => {
+                const select = row.querySelector('select[name="product_id[]"]');
+                return select && select.dataset.filled && parseInt(select.value) === data.id;
+            });
+            if (existingRow) {
+                const qtyInput = existingRow.querySelector('input[name="quantity[]"]');
+                qtyInput.value = (parseInt(qtyInput.value) || 0) + 1;
+                showScanMsg(`تمت زيادة كمية: ${data.name} (${data.barcode})`, 'success');
+                return;
+            }
+
+            let row = findEmptyRow();
+            if (!row) {
+                const tpl = document.getElementById('rowTemplate').content.cloneNode(true);
+                document.querySelector('#itemsTable tbody').appendChild(tpl);
+                const rows = document.querySelectorAll('#itemsTable tbody tr');
+                row = rows[rows.length - 1];
+            }
+            const select = row.querySelector('select[name="product_id[]"]');
+            select.value = data.id;
+            select.dataset.filled = '1'; syncBc(row);
+            row.querySelector('input[name="quantity[]"]').value = 1;
+            row.querySelector('input[name="unit_cost[]"]').value = costInInvoiceCurrency(data.purchase_price).toFixed(2);
+            showScanMsg(`تمت إضافة: ${data.name} (${data.barcode})`, 'success'); updateFx();
+        })
+        .catch(() => showScanMsg('تعذر الاتصال بالخادم', 'danger'));
+});
+const lastRates = {{ last_rates|tojson }};
+// تكلفة المنتج المحفوظة بالدينار؛ تُقترح في الفاتورة محوّلة لعملة الفاتورة (÷ سعر الصرف)
+function costInInvoiceCurrency(lyd) {
+    const cur = document.getElementById('currencyCode').value;
+    const rate = cur === 'LYD' ? 1 : (parseFloat(document.getElementById('exchangeRate').value) || 1);
+    return (lyd || 0) / rate;
+}
+const canAddProduct = {{ 'true' if can_add_product else 'false' }};
+// خريطة الباركود -> المنتج (لإدخال الباركود مباشرة في خانة كل سطر دون طلب من الخادم)
+const PRODUCT_BY_BARCODE = {{ barcode_map|tojson }};
+const BC_BY_ID = {};
+Object.entries(PRODUCT_BY_BARCODE).forEach(([bc, p]) => { BC_BY_ID[p.id] = bc; });
+function syncBc(row) {
+    const sel = row.querySelector('select[name="product_id[]"]'), inp = row.querySelector('.bc-input');
+    if (!sel || !inp) return;
+    inp.value = sel.dataset.filled ? (BC_BY_ID[sel.value] || '') : '';
+}
+(function () {
+    const table = document.getElementById('itemsTable');
+    // اختيار المنتج من القائمة يعرض باركوده ويُعدّ الصنف مُعبَّأً (فيُمنع تكراره عند مسح باركوده لاحقًا)
+    table.addEventListener('change', function (e) {
+        if (e.target.matches('select[name="product_id[]"]')) { e.target.dataset.filled = '1'; syncBc(e.target.closest('tr')); updateFx(); }
+    });
+    table.addEventListener('keydown', function (e) {
+        if (!e.target.classList.contains('bc-input') || e.key !== 'Enter') return;
+        e.preventDefault();
+        const code = e.target.value.trim(); if (!code) return;
+        const row = e.target.closest('tr'), p = PRODUCT_BY_BARCODE[code];
+        if (!p) {
+            if (canAddProduct) openQuickAdd(code, 'هذا الباركود غير مسجّل في المنتجات - أضفه كمنتج جديد:');
+            else showScanMsg('الباركود غير موجود في المنتجات', 'danger');
+            return;
+        }
+        const dup = Array.from(table.querySelectorAll('tbody tr')).find(r => {
+            const s = r.querySelector('select[name="product_id[]"]');
+            return r !== row && s && s.dataset.filled && parseInt(s.value) === p.id;
+        });
+        if (dup) {   // الصنف موجود في سطر آخر: نزيد كميته بدل التكرار
+            const q = dup.querySelector('input[name="quantity[]"]'); q.value = (parseInt(q.value) || 0) + 1;
+            e.target.value = ''; showScanMsg(`تمت زيادة كمية: ${p.name} (${code})`, 'success'); updateFx(); return;
+        }
+        const sel = row.querySelector('select[name="product_id[]"]');
+        sel.value = p.id; sel.dataset.filled = '1';
+        const cost = row.querySelector('input[name="unit_cost[]"]');
+        if (!parseFloat(cost.value) && p.cost) cost.value = costInInvoiceCurrency(p.cost).toFixed(2);
+        updateFx();
+        const qty = row.querySelector('input[name="quantity[]"]'); qty.focus(); qty.select();
+    });
+    document.querySelectorAll('#itemsTable tbody tr').forEach(syncBc);
+})();
+function addOptionEverywhere(p){
+    const text = `${p.name} (${p.barcode})`;
+    const sels = Array.from(document.querySelectorAll('select[name="product_id[]"]'));
+    const tplSel = document.getElementById('rowTemplate').content.querySelector('select');
+    if (tplSel) sels.push(tplSel);
+    sels.forEach(sel => { if (!Array.from(sel.options).some(o => o.value == p.id)) sel.add(new Option(text, p.id)); });
+    PRODUCT_BY_BARCODE[p.barcode] = { id: p.id, name: p.name, cost: p.purchase_price || 0 }; BC_BY_ID[p.id] = p.barcode;
+}
+function putInInvoice(p){
+    let row = findEmptyRow();
+    if (!row) {
+        document.querySelector('#itemsTable tbody').appendChild(document.getElementById('rowTemplate').content.cloneNode(true));
+        const rows = document.querySelectorAll('#itemsTable tbody tr'); row = rows[rows.length - 1];
+    }
+    const select = row.querySelector('select[name="product_id[]"]');
+    select.value = p.id; select.dataset.filled = '1'; syncBc(row);
+    row.querySelector('input[name="quantity[]"]').value = 1;
+    row.querySelector('input[name="unit_cost[]"]').value = costInInvoiceCurrency(p.purchase_price).toFixed(2);
+    updateFx();
+    const cost = row.querySelector('input[name="unit_cost[]"]'); cost.focus(); cost.select();
+}
+if (canAddProduct) {
+    const qaEl = document.getElementById('quickAddModal'), qaForm = document.getElementById('quickAddForm');
+    const qaMsg = document.getElementById('qaMsg'), qaErr = document.getElementById('qaErr');
+    const qaModal = bootstrap.Modal.getOrCreateInstance(qaEl);
+    window.openQuickAdd = function(barcode, hint){
+        qaForm.reset(); qaErr.classList.add('d-none');
+        qaForm.elements['barcode'].value = barcode || '';
+        qaMsg.textContent = hint || ''; qaMsg.classList.toggle('d-none', !hint);
+        qaModal.show();
+        qaEl.addEventListener('shown.bs.modal', () => qaForm.elements['name'].focus(), { once: true });
+    };
+    document.getElementById('newProductBtn').addEventListener('click', () => openQuickAdd('', ''));
+    qaEl.addEventListener('hidden.bs.modal', () => scanInput.focus());
+    document.getElementById('qaSave').addEventListener('click', function(){
+        qaErr.classList.add('d-none');
+        if (!qaForm.reportValidity()) return;
+        const btn = this; btn.disabled = true;
+        fetch('/products/quick-add', { method: 'POST', body: new FormData(qaForm) })
+            .then(r => r.json().then(data => ({ status: r.status, data })))
+            .then(({ status, data }) => {
+                if (status === 409 && data.existing) {   // الباركود لمنتج موجود: نستخدمه بدل التكرار
+                    putInInvoice(data.existing); qaModal.hide();
+                    showScanMsg(`المنتج موجود مسبقًا (${data.existing.name} - ${data.existing.barcode}) - أُضيف للفاتورة`, 'success'); return;
+                }
+                if (status !== 200) { qaErr.textContent = data.error || 'تعذّرت الإضافة'; qaErr.classList.remove('d-none'); return; }
+                addOptionEverywhere(data); putInInvoice(data); qaModal.hide();
+                showScanMsg(data.restored ? `تمت استعادة المنتج المحذوف: ${data.name} (${data.barcode})` : `تمت إضافة المنتج: ${data.name} (${data.barcode})`, 'success');
+            })
+            .catch(() => { qaErr.textContent = 'تعذّر الاتصال بالخادم'; qaErr.classList.remove('d-none'); })
+            .finally(() => { btn.disabled = false; });
+    });
+} else { window.openQuickAdd = function(){}; }
+function invoiceTotal(){let t=0;document.querySelectorAll('#itemsTable tbody tr').forEach(tr=>{const q=parseFloat((tr.querySelector('[name="quantity[]"]')||{}).value)||0;const c=parseFloat((tr.querySelector('[name="unit_cost[]"]')||{}).value)||0;t+=q*c;});return t;}
+function updateFx(){
+    const c=document.getElementById('currencyCode').value; const r=document.getElementById('exchangeRate');
+    if(c==='LYD'){r.value=1;r.readOnly=true;}else{r.readOnly=false;}
+    const rate=parseFloat(r.value)||1; const t=invoiceTotal();
+    document.getElementById('fxPreview').textContent=`1 ${c} = ${rate.toFixed(4)} LYD`+(t>0?` | الإجمالي: ${t.toFixed(2)} ${c} = ${(t*rate).toFixed(2)} LYD`:'');
+    const so=document.querySelector('[name="supplier_id"]'); const sc=so.options[so.selectedIndex]?so.options[so.selectedIndex].dataset.currency:'';
+    document.getElementById('fxWarn').classList.toggle('d-none', !(sc && sc!==c));
+    updateDue(c);
+}
+function balLabel(x,c){ return x>0.005 ? `${x.toFixed(2)} ${c} مستحق عليك` : (x<-0.005 ? `${(-x).toFixed(2)} ${c} مستحق لك` : 'متوازن (صفر)'); }
+function updateDue(c){
+    const total=invoiceTotal(); const paid=parseFloat(document.querySelector('[name="paid_amount"]').value)||0;
+    const remaining=Math.max(0,total-paid);
+    const so=document.querySelector('[name="supplier_id"]'); const opt=so.options[so.selectedIndex];
+    const nLines=document.querySelectorAll('#itemsTable select[data-filled]').length;
+    let html=`عدد الأصناف: <b>${nLines}</b> &nbsp;|&nbsp; إجمالي الفاتورة: <b>${total.toFixed(2)}</b> ${c} &nbsp;|&nbsp; المدفوع: <b>${paid.toFixed(2)}</b> &nbsp;|&nbsp; المتبقي على هذه الفاتورة للمورد: <b class="${remaining>0.005?'text-danger':'text-success'}">${remaining.toFixed(2)}</b> ${c}`;
+    if(paid>total+0.005) html+=`<div class="text-danger fw-bold mt-1">المدفوع أكبر من إجمالي الفاتورة - لن يُقبل الحفظ.</div>`;
+    if(opt && opt.value){
+        const bal=parseFloat(opt.dataset.balance)||0;
+        html+=`<div class="mt-1">رصيد المورد قبل هذه الفاتورة: <b>${balLabel(bal,c)}</b> &nbsp;←&nbsp; بعدها: <b>${balLabel(bal+remaining,c)}</b></div>`;
+        if(bal<-0.005 && remaining>0.005) html+=`<div class="mt-1 text-success">سيُخصم تلقائيًا من مستحقاتك عنده: <b>${Math.min(-bal,remaining).toFixed(2)}</b> ${c}</div>`;
+    }
+    document.getElementById('dueBox').innerHTML=html;
+}
+document.getElementById('currencyCode').addEventListener('change',function(){const c=this.value; if(c!=='LYD' && lastRates[c]){document.getElementById('exchangeRate').value=lastRates[c];} updateFx();});
+document.getElementById('exchangeRate').addEventListener('input',updateFx);
+document.querySelector('[name="paid_amount"]').addEventListener('input',updateFx);
+document.querySelector('[name="supplier_id"]').addEventListener('change',function(){const o=this.options[this.selectedIndex]; if(o.dataset.currency){const cc=document.getElementById('currencyCode'); cc.value=o.dataset.currency; if(cc.value!=='LYD' && lastRates[cc.value]){document.getElementById('exchangeRate').value=lastRates[cc.value];}} updateFx();});
+document.getElementById('itemsTable').addEventListener('input',updateFx);
+document.getElementById('itemsTable').addEventListener('click',function(){setTimeout(updateFx,0);});
+document.getElementById('addRow').addEventListener('click',function(){setTimeout(updateFx,0);});
+updateFx();
+</script>
+{% endblock %}

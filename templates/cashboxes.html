@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}الخزائن{% endblock %}
+{% block content %}
+<h4 class="mb-3">الصناديق والخزائن وإسنادها للموظفين</h4>
+<div class="row g-3 mb-3">
+<div class="col-lg-4">
+    <div class="card">
+        <div class="card-header">إضافة صندوق/خزنة جديدة</div>
+        <div class="card-body">
+            <form method="post">
+                <input name="name" class="form-control mb-2" placeholder="اسم الصندوق/الخزنة" required>
+                <input name="location" class="form-control mb-2" placeholder="الموقع/الفرع">
+                <label class="form-label small">المخزن الافتراضي (تُفتح عليه نقطة البيع تلقائيًا عند فتح وردية بهذه الخزينة)</label>
+                <select name="default_warehouse_id" class="form-select mb-2">
+                    <option value="">-- بدون ربط --</option>
+                    {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+                </select>
+                <label class="form-label small mb-1">الرصيد الابتدائي (اختياري)</label>
+                <input type="number" step="0.01" min="0" name="initial_balance" class="form-control mb-3" value="0">
+                <button class="btn btn-primary w-100">إضافة</button>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="col-lg-8">
+    <div class="card">
+        <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>الاسم</th><th>الموقع</th><th>الرصيد الحالي</th><th>المستخدم</th><th>إسناد</th><th></th></tr></thead>
+            <tbody>
+            {% for box in cashboxes %}
+                <tr>
+                    <td>{{box.name}}</td>
+                    <td>{{box.location or '-'}}</td>
+                    <td class="fw-bold {{ 'text-danger' if (box.balance or 0) < 0 }}">{{ "%.2f"|format(box.balance or 0) }} {{ currency }}</td>
+                    <td>{% for u in users if u.cashbox_id == box.id %}<span class="badge bg-secondary me-1">{{u.full_name}}</span>{% endfor %}</td>
+                    <td>
+                        <form method="post" action="{{url_for('assign_cashbox',cid=box.id,uid=users[0].id if users else 0)}}" class="d-flex gap-1">
+                            <select class="form-select form-select-sm" onchange="this.form.action='{{url_for('cashboxes')}}'.replace('/cashboxes','/cashboxes/{{box.id}}/assign/'+this.value)" {% if not users %}disabled{% endif %}>
+                                {% for u in users %}<option value="{{u.id}}">{{u.full_name}}</option>{% endfor %}
+                            </select>
+                            <button class="btn btn-sm btn-outline-primary">حفظ</button>
+                        </form>
+                    </td>
+                    <td class="d-flex gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editBox{{box.id}}"><i class="bi bi-pencil"></i></button>
+                        <a href="{{url_for('delete_cashbox', cid=box.id)}}" class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف الخزينة؟')"><i class="bi bi-trash"></i></a>
+                    </td>
+                </tr>
+                <div class="modal fade" id="editBox{{box.id}}" tabindex="-1">
+                    <div class="modal-dialog"><div class="modal-content">
+                        <form method="POST" action="{{ url_for('edit_cashbox', cid=box.id) }}">
+                            <div class="modal-header"><h5 class="modal-title">تعديل الخزينة</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                            <div class="modal-body">
+                                <input type="text" name="name" class="form-control mb-2" value="{{ box.name }}" required placeholder="اسم الخزينة">
+                                <input type="text" name="location" class="form-control mb-2" value="{{ box.location or '' }}" placeholder="الموقع/الفرع">
+                                <label class="form-label small">المخزن الافتراضي (لنقطة البيع)</label>
+                                <select name="default_warehouse_id" class="form-select mb-2">
+                                    <option value="">-- بدون ربط --</option>
+                                    {% for w in warehouses %}<option value="{{ w.id }}" {{ 'selected' if box.default_warehouse_id==w.id }}>{{ w.name }}</option>{% endfor %}
+                                </select>
+                                <label class="form-label small mb-1">الرصيد الحالي: {{ "%.2f"|format(box.balance or 0) }} {{ currency }}</label>
+                                <input type="number" step="0.01" name="new_balance" class="form-control" placeholder="اتركها فارغة لعدم تغيير الرصيد">
+                                <p class="small text-muted mt-2 mb-0">أي تغيير هنا في الرصيد سيُسجَّل تلقائيًا كتحويل (تصحيح يدوي) في سجل التحويلات أدناه، حتى يبقى له أثر واضح.</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                                <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+                            </div>
+                        </form>
+                    </div></div>
+                </div>
+            {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-3">لا توجد صناديق/خزائن بعد</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">تحويل نقدي بين صندوقين (مثلاً: من صندوق البيع إلى الخزنة)</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('transfer_cash') }}" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">من</label>
+                <select name="from_cashbox_id" class="form-select">
+                    <option value="">خارج النظام (إيداع)</option>
+                    {% for box in cashboxes %}<option value="{{ box.id }}">{{ box.name }} ({{ "%.2f"|format(box.balance or 0) }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">إلى</label>
+                <select name="to_cashbox_id" class="form-select">
+                    <option value="">خارج النظام (سحب)</option>
+                    {% for box in cashboxes %}<option value="{{ box.id }}">{{ box.name }} ({{ "%.2f"|format(box.balance or 0) }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">المبلغ ({{ currency }})</label>
+                <input type="number" step="0.01" min="0.01" name="amount" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">ملاحظة</label>
+                <input type="text" name="note" class="form-control" placeholder="مثال: نقل مبيعات اليوم للخزنة">
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+                <button class="btn btn-primary w-100"><i class="bi bi-arrow-left-right"></i></button>
+            </div>
+        </form>
+        <p class="small text-muted mt-2 mb-0">
+            اختر "خارج النظام" في "من" لتسجيل إيداع (مثلاً ضخّ رأس مال)، أو في "إلى" لتسجيل سحب (نقدي أو بنكي حسب الصندوق المختار).
+        </p>
+        {% if current_user.has_permission('owner_withdrawal') %}
+        <p class="small mt-2 mb-0">
+            هذا التحويل يحرّك رصيد الصندوق فقط. لتسجيل سحب مالك بشكل يظهر في الربح الصافي والتقارير كبند مستقل
+            (بدون احتسابه كمصروف)، استخدم
+            <a href="{{ url_for('accounts') }}?entry_type=owner_withdrawal">تسجيل سحب مالك من صفحة الحسابات</a>.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">سجل التحويلات النقدية</div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>الرقم</th><th>التاريخ</th><th>من</th><th>إلى</th><th>المبلغ</th><th>ملاحظة</th><th>بواسطة</th><th></th></tr></thead>
+            <tbody>
+            {% for t in transfers %}
+                <tr>
+                    <td>{{ t.transfer_number }}</td>
+                    <td>{{ (t.created_at|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ t.from_cashbox.name if t.from_cashbox else 'خارج النظام' }}</td>
+                    <td>{{ t.to_cashbox.name if t.to_cashbox else 'خارج النظام' }}</td>
+                    <td class="fw-bold">{{ "%.2f"|format(t.amount) }}</td>
+                    <td class="small text-muted">{{ t.note or '-' }}</td>
+                    <td>{{ t.user.full_name if t.user else '-' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('delete_cash_transfer', tid=t.id) }}" onsubmit="return confirm('حذف هذا التحويل؟ سيتم عكس أثره على أرصدة الصناديق المعنية.')">
+                            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="8" class="text-center text-muted py-3">لا توجد تحويلات مسجلة بعد</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

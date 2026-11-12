@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}الديون{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h4 class="mb-0"><i class="bi bi-cash-coin"></i> ديون العملاء</h4>
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ url_for('debts_print', q=q, sort=sort) }}" target="_blank" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer"></i> طباعة التقرير</a>
+        <a href="{{ url_for('debts_export', fmt='pdf', q=q, sort=sort) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        <a href="{{ url_for('debts_export', fmt='excel', q=q, sort=sort) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+        <a href="{{ url_for('accounts') }}?entry_type=customer_payment" class="btn btn-success btn-sm"><i class="bi bi-cash"></i> تسجيل تحصيل</a>
+        <a href="{{ url_for('accounts') }}?entry_type=customer_debt" class="btn btn-outline-danger btn-sm"><i class="bi bi-plus-lg"></i> دين بدون فاتورة</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="stat-card bg-danger-soft"><i class="bi bi-cash-coin"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total) }}</span><span class="stat-label">إجمالي المستحق لنا ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-primary-soft"><i class="bi bi-people"></i>
+            <div><span class="stat-num">{{ rows|length }}</span><span class="stat-label">عميل عليه دين</span></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-warning-soft"><i class="bi bi-exclamation-triangle"></i>
+            <div><span class="stat-num">{{ near_limit|length }}</span><span class="stat-label">قاربوا سقف الائتمان (80%+)</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-5"><input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="بحث بالاسم أو رقم الهاتف"></div>
+            <div class="col-md-4">
+                <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="amount" {{ 'selected' if sort == 'amount' }}>ترتيب: الأكبر دينًا أولًا</option>
+                    <option value="oldest" {{ 'selected' if sort == 'oldest' }}>ترتيب: الأقدم بدون دفع أولًا</option>
+                    <option value="name" {{ 'selected' if sort == 'name' }}>ترتيب: بالاسم</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-search"></i> عرض</button>
+                {% if q %}<a href="{{ url_for('debts', sort=sort) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></a>{% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+        <thead><tr><th>#</th><th>العميل</th><th>الهاتف</th><th>المستحق</th><th>آخر تحصيل</th><th>آخر شراء بالآجل</th><th>بدون دفع منذ</th><th>سقف الائتمان</th><th></th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+            {% set c = r.customer %}
+            <tr>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td class="fw-bold">{{ c.name }}</td>
+                <td dir="ltr" class="text-end">{{ c.phone or '-' }}</td>
+                <td class="text-danger fw-bold fs-6">{{ "%.2f"|format(r.balance) }}</td>
+                <td class="small">{{ (r.last_payment|local).strftime('%Y-%m-%d') if r.last_payment else 'لم يدفع' }}</td>
+                <td class="small">{{ (r.last_purchase|local).strftime('%Y-%m-%d') if r.last_purchase else '-' }}</td>
+                <td>{% if r.days is not none %}<span class="badge {{ 'bg-danger' if r.days > 60 else ('bg-warning text-dark' if r.days > 30 else 'bg-light text-dark') }}">{{ r.days }} يوم</span>{% else %}-{% endif %}</td>
+                <td style="min-width:110px">
+                    {% if r.limit_pct is not none %}
+                    <div class="progress" style="height:16px">
+                        <div class="progress-bar {{ 'bg-danger' if r.limit_pct >= 100 else ('bg-warning' if r.limit_pct >= 80 else 'bg-success') }}" style="width:{{ [r.limit_pct, 100]|min }}%">{{ r.limit_pct }}%</div>
+                    </div>
+                    {% else %}<span class="small text-muted">بدون حد</span>{% endif %}
+                </td>
+                <td class="text-nowrap">
+                    <a href="{{ url_for('accounts', entry_type='customer_payment', customer_id=c.id) }}" class="btn btn-sm btn-success" title="تسجيل تحصيل"><i class="bi bi-cash"></i></a>
+                    <a href="{{ url_for('customer_statement', cid=c.id) }}" class="btn btn-sm btn-outline-primary">كشف حساب</a>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="9" class="text-center text-muted py-3">لا توجد ديون مستحقة{% if q %} مطابقة للبحث{% endif %} 🎉</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if rows %}
+        <tfoot><tr class="table-light fw-bold"><td></td><td colspan="2">الإجمالي ({{ rows|length }} عميل)</td><td class="text-danger">{{ "%.2f"|format(total) }} {{ currency }}</td><td colspan="5"></td></tr></tfoot>
+        {% endif %}
+    </table>
+    </div>
+</div>
+
+{% if credits %}
+<div class="card mt-3">
+    <div class="card-header"><i class="bi bi-arrow-left-right"></i> عملاء لهم رصيد عندنا (دفعوا أكثر من المستحق) - المجموع {{ "%.2f"|format(credits_total) }} {{ currency }}</div>
+    <table class="table table-sm mb-0">
+        <tbody>
+        {% for c in credits %}
+            <tr><td>{{ c.name }}</td><td dir="ltr" class="text-end">{{ c.phone or '-' }}</td><td class="text-success fw-bold">{{ "%.2f"|format(-c.balance) }}</td>
+                <td><a href="{{ url_for('customer_statement', cid=c.id) }}" class="btn btn-sm btn-outline-primary">كشف حساب</a></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

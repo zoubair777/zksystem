@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}التقارير{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">التقارير</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('top_products_report') }}" class="btn btn-primary btn-sm"><i class="bi bi-trophy"></i> أفضل المنتجات والتحليل</a>
+        <a href="{{ url_for('export_inventory_excel_route') }}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-excel"></i> تصدير الجرد Excel
+        </a>
+        <a href="{{ url_for('export_inventory_pdf_route') }}" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-file-earmark-pdf"></i> تصدير الجرد PDF
+        </a>
+    </div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="stat-card bg-info-soft"><i class="bi bi-box-seam"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(stock_value) }}</span><span class="stat-label">قيمة المخزون (تكلفة)</span></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-success-soft"><i class="bi bi-graph-up"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(net_sales) }}</span><span class="stat-label">صافي المبيعات التاريخي (بعد المرتجعات)</span>
+                <span class="small text-muted">الإجمالي {{ "%.2f"|format(total_sales) }} − مرتجع {{ "%.2f"|format(returns_total) }}</span></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-danger-soft"><i class="bi bi-people"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_debt) }}</span><span class="stat-label">إجمالي ديون العملاء</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">المبيعات حسب طريقة الدفع</div>
+    <div class="card-body">
+        <div class="row g-3 text-center">
+            <div class="col-md-4">
+                <div class="p-3 bg-success-soft rounded"><i class="bi bi-cash fs-3"></i>
+                    <h5 class="mt-2">{{ "%.2f"|format(by_method.cash) }} {{ currency }}</h5><span class="text-muted">نقدًا</span></div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 bg-info-soft rounded"><i class="bi bi-bank fs-3"></i>
+                    <h5 class="mt-2">{{ "%.2f"|format(by_method.bank) }} {{ currency }}</h5><span class="text-muted">بنكي/تحويل</span></div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 bg-danger-soft rounded"><i class="bi bi-hourglass-split fs-3"></i>
+                    <h5 class="mt-2">{{ "%.2f"|format(by_method.credit) }} {{ currency }}</h5><span class="text-muted">آجل (دين)</span></div>
+            </div>
+        </div>
+        <a href="{{ url_for('debts') }}" class="btn btn-sm btn-outline-danger mt-3"><i class="bi bi-exclamation-diamond"></i> عرض لوحة الديون التفصيلية</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">تقرير المخزون الحالي</div>
+    <table class="table mb-0">
+        <thead><tr><th>المنتج</th><th>الكمية الحالية</th><th>سعر الشراء</th><th>سعر البيع</th><th>قيمة المخزون</th></tr></thead>
+        <tbody>
+        {% for p in products %}
+            <tr>
+                <td>{{ p.name }}{{ p|bc }}</td>
+                <td>{{ p.total_quantity() }}</td>
+                <td>{{ "%.2f"|format(p.purchase_price) }}</td>
+                <td>{{ "%.2f"|format(p.sale_price) }}</td>
+                <td>{{ "%.2f"|format(p.total_quantity() * p.purchase_price) }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

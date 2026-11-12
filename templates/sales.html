@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pager %}
+{% block title %}الفواتير{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">فواتير المبيعات</h4>
+    <div class="d-flex gap-2 align-items-center">
+        <form method="get" action="{{ url_for('find_invoice_for_service') }}" class="d-flex gap-1">
+    <input type="text" name="number" class="form-control form-control-sm" placeholder="رقم الفاتورة INV-..." required style="min-width:170px">
+    <button name="action" value="exchange" class="btn btn-sm btn-warning text-nowrap"><i class="bi bi-arrow-repeat"></i> استبدال</button>
+    <button name="action" value="return" class="btn btn-sm btn-outline-danger text-nowrap"><i class="bi bi-arrow-return-left"></i> إرجاع</button>
+</form>
+        <a href="{{ url_for('export_sales_excel_route') }}" class="btn btn-outline-success btn-sm text-nowrap">
+            <i class="bi bi-file-earmark-excel"></i> تصدير Excel
+        </a>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">اسم العميل</label>
+                <input type="text" name="customer_name" value="{{ customer_name or '' }}" class="form-control form-control-sm" placeholder="اسم العميل...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">رقم الفاتورة</label>
+                <input type="text" name="invoice_number" value="{{ invoice_number or '' }}" class="form-control form-control-sm" placeholder="INV...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">من تاريخ</label>
+                <input type="date" name="start" value="{{ start or '' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">إلى تاريخ</label>
+                <input type="date" name="end" value="{{ end or '' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> بحث</button>
+                {% if customer_name or invoice_number or start or end %}
+                <a href="{{ url_for('sales') }}" class="btn btn-sm btn-outline-secondary">إلغاء الفلترة</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+<div class="d-flex flex-wrap gap-3 small text-muted mb-2">
+    <span><i class="bi bi-receipt"></i> {{ match_count }} فاتورة معتمدة</span>
+    <span><i class="bi bi-cash-stack"></i> مجموعها: <strong class="text-dark">{{ "%.2f"|format(match_total) }} {{ currency }}</strong></span>
+    {% if pager.pages > 1 %}<span>صفحة {{ pager.page }} من {{ pager.pages }} ({{ pager.total }} فاتورة بما فيها الملغاة)</span>{% endif %}
+</div>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr><th>رقم الفاتورة</th><th>العميل</th><th>التاريخ</th><th>الإجمالي</th><th>طريقة الدفع</th><th>الحالة</th><th></th></tr></thead>
+            <tbody>
+            {% for i in invoices %}
+                <tr>
+                    <td>{{ i.invoice_number }}{% if i.exchange_credit %} <span class="badge bg-warning text-dark">استبدال</span>{% endif %}</td>
+                    <td>{{ i.customer.name if i.customer else 'عميل نقدي' }}</td>
+                    <td>{{ (i.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        {% set ret = returned_map.get(i.id, 0) %}
+                        {% if ret %}
+                            <div class="fw-bold">{{ "%.2f"|format(i.total - ret) }} <small class="text-muted">(الصافي)</small></div>
+                            <div class="small text-muted"><s>{{ "%.2f"|format(i.total) }}</s></div>
+                            <div class="small text-danger">مرتجع: - {{ "%.2f"|format(ret) }}</div>
+                        {% else %}{{ "%.2f"|format(i.total) }}{% endif %}
+                    </td>
+                    <td>
+                        <span class="badge {{ 'bg-warning text-dark' if i.payment_method in ('credit', 'exchange') else ('bg-info' if i.payment_method=='bank' else ('bg-secondary' if i.payment_method=='split' else 'bg-success')) }}">
+                            {{ i.payment_label() }}
+                        </span>
+                        {% if i.credit_amount and i.payment_method == 'split' %}<div class="small text-muted">آجل: {{ "%.2f"|format(i.credit_amount) }}</div>{% endif %}
+                    </td>
+                    <td>
+                        {% if i.status == 'voided' %}<span class="badge bg-secondary">ملغاة</span>
+                        {% elif i.status == 'void_requested' %}<span class="badge bg-warning text-dark">طلب إلغاء معلّق</span>
+                        {% else %}<span class="badge bg-success">معتمدة</span>{% endif %}
+                    </td>
+                    <td class="d-flex gap-1">
+                        <a href="{{ url_for('invoice_print', iid=i.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i></a>
+                        {% if i.status == 'completed' and current_user.has_permission('sales_edit') %}
+                        <a href="{{ url_for('edit_invoice', iid=i.id) }}" class="btn btn-sm btn-outline-warning"><i class="bi bi-pencil"></i></a>
+                        {% endif %}
+                        {% if i.status == 'completed' and current_user.has_permission('sales_return') %}
+                        <a href="{{ url_for('sales_return', iid=i.id) }}" class="btn btn-sm btn-outline-primary" title="إرجاع كلي/جزئي"><i class="bi bi-arrow-return-left"></i></a>
+                        {% endif %}
+                        {% if i.status == 'completed' and current_user.has_permission('sales_exchange') %}
+                        <a href="{{ url_for('sales_exchange', iid=i.id) }}" class="btn btn-sm btn-outline-warning" title="استبدال بضاعة"><i class="bi bi-arrow-repeat"></i></a>
+                        {% endif %}
+                        {% if i.status == 'completed' and current_user.has_permission('sales_void') %}
+                        <button type="button" class="btn btn-sm btn-outline-danger js-void" title="إلغاء" data-number="{{ i.invoice_number }}" data-action="{{ url_for('request_void_invoice', iid=i.id) }}"><i class="bi bi-x-circle"></i></button>
+                        {% endif %}
+                        {% if current_user.has_permission('sales_delete') %}
+                        <button type="button" class="btn btn-sm btn-outline-dark js-delete" title="حذف نهائي" data-number="{{ i.invoice_number }}" data-action="{{ url_for('delete_invoice', iid=i.id) }}"><i class="bi bi-trash"></i></button>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-3">لا توجد فواتير</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{ render_pager(pager, 'sales') }}
+
+<!-- نافذة حذف واحدة ونافذة إلغاء واحدة للصفحة كلها، تُعبّأ برقم الفاتورة عند الضغط -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="deleteForm">
+                <div class="modal-header"><h6 class="modal-title text-danger">حذف الفاتورة <span class="js-number"></span> نهائيًا</h6></div>
+                <div class="modal-body">
+                    <p class="mb-1">هذا الإجراء <strong>لا يمكن التراجع عنه</strong>. سيتم:</p>
+                    <ul class="small">
+                        <li>حذف الفاتورة وجميع أصنافها نهائيًا من النظام.</li>
+                        <li>إعادة الكميات إلى المخزون (إن لم تكن الفاتورة ملغاة مسبقًا).</li>
+                        <li>تصحيح رصيد العميل إن كانت الفاتورة تحتوي على مبلغ آجل.</li>
+                        <li>تسجيل هذه العملية في سجل الأنشطة مع نسخة كاملة من بيانات الفاتورة.</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-dark">تأكيد الحذف النهائي</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="modal fade" id="voidModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="voidForm">
+                <div class="modal-header"><h6 class="modal-title">{{ 'إلغاء الفاتورة' if current_user.is_manager_or_admin() else 'طلب إلغاء الفاتورة' }} <span class="js-number"></span></h6></div>
+                <div class="modal-body">
+                    <label class="form-label">السبب</label>
+                    <textarea name="reason" class="form-control" required></textarea>
+                    {% if not current_user.is_manager_or_admin() %}
+                    <p class="small text-muted mt-2">سيتم إرسال هذا الطلب للمالك/المدير للموافقة قبل تنفيذه.</p>
+                    {% endif %}
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إغلاق</button>
+                    <button type="submit" class="btn btn-danger">{{ 'تأكيد الإلغاء' if current_user.is_manager_or_admin() else 'إرسال طلب الإلغاء' }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+[['js-delete', 'deleteModal', 'deleteForm'], ['js-void', 'voidModal', 'voidForm']].forEach(function (cfg) {
+    var modalEl = document.getElementById(cfg[1]), form = document.getElementById(cfg[2]), modal = null;
+    document.querySelectorAll('.' + cfg[0]).forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            form.reset();
+            form.action = btn.dataset.action;
+            modalEl.querySelector('.js-number').textContent = btn.dataset.number;
+            modal = modal || new bootstrap.Modal(modalEl);
+            modal.show();
+        });
+    });
+});
+</script>
+
+{% endblock %}

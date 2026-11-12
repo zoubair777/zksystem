@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}تسوية المخزون{% endblock %}
+{% block content %}
+<h4 class="mb-3">تعديل وتسوية كمية المخزون</h4>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post" class="row g-3">
+            <div class="col-md-3">
+                <label>الباركود <small class="text-muted">(امسح أو اكتب ثم Enter)</small></label>
+                <input type="text" id="adjBarcode" class="form-control font-monospace" dir="ltr" autocomplete="off" placeholder="باركود المنتج">
+                <div id="adjBarcodeMsg" class="small mt-1"></div>
+            </div>
+            <div class="col-md-3">
+                <label>المنتج</label>
+                <select name="product_id" id="adjProduct" class="form-select">{% for p in products %}<option value="{{p.id}}" data-barcode="{{p.barcode}}">{{p.name}} — {{p.barcode}}</option>{% endfor %}</select>
+            </div>
+            <div class="col-md-3">
+                <label>المخزن</label>
+                <select name="warehouse_id" class="form-select">{% for w in warehouses %}<option value="{{w.id}}">{{w.name}}</option>{% endfor %}</select>
+            </div>
+            <div class="col-md-3">
+                <label>نوع التعديل</label>
+                <select name="mode" id="adjMode" class="form-select">
+                    <option value="set">تحديد الكمية النهائية</option>
+                    <option value="increase">زيادة</option>
+                    <option value="decrease">نقص</option>
+                </select>
+            </div>
+            <div class="col-md-3" id="setQtyField">
+                <label>الكمية الجديدة</label>
+                <input name="new_quantity" type="number" min="0" class="form-control">
+            </div>
+            <div class="col-md-3 d-none" id="changeQtyField">
+                <label id="changeQtyLabel">قيمة التعديل</label>
+                <input name="change_quantity" type="number" min="1" class="form-control">
+            </div>
+            <div class="col-md-9"><label>سبب التعديل</label><input name="reason" class="form-control" required></div>
+            <div><button class="btn btn-warning">تنفيذ التسوية</button></div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header fw-bold"><i class="bi bi-upc-scan"></i> جرد / تسوية دفعة واحدة بالباركود (لعدة أصناف مرة واحدة)</div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('inventory_adjust_batch') }}" id="batchForm">
+            <div class="row g-3 mb-3">
+                <div class="col-md-3"><label>المخزن</label>
+                    <select name="warehouse_id" id="batchWarehouse" class="form-select">{% for w in warehouses %}<option value="{{w.id}}">{{w.name}}</option>{% endfor %}</select></div>
+                <div class="col-md-5"><label>سبب التسوية</label><input name="reason" class="form-control" placeholder="مثال: جرد نهاية الشهر" required></div>
+                <div class="col-md-4"><label>الباركود <small class="text-muted">(Enter يضيف الصنف)</small></label>
+                    <input type="text" id="batchBarcode" class="form-control font-monospace" dir="ltr" autocomplete="off" placeholder="امسح الباركود هنا"></div>
+            </div>
+            <div id="batchMsg" class="small mb-2"></div>
+            <div class="table-responsive" style="max-height:55vh; overflow-y:auto">
+                <table class="table table-sm align-middle mb-0" id="batchTable">
+                    <thead style="position:sticky;top:0;background:#fff;z-index:1"><tr><th style="width:36px">#</th><th>الباركود</th><th>المنتج</th><th>الكمية الحالية</th><th style="width:150px">الكمية النهائية (المعدودة)</th><th style="width:40px"></th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="mt-3 d-flex gap-2 align-items-center">
+                <button class="btn btn-warning" id="batchSave"><i class="bi bi-check2-square"></i> تنفيذ التسوية</button>
+                <span class="small text-muted">عدد الأصناف: <b id="batchCount">0</b> · الأصناف التي لم تتغير كميتها تُتجاهل · النقص يُسجَّل خسارة مخزون.</span>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card table-responsive">
+    <table class="table">
+        <thead><tr><th>الرقم</th><th>المنتج</th><th>المخزن</th><th>قبل</th><th>بعد</th><th>الفرق</th><th>السبب</th><th>المستخدم</th><th>الوقت</th><th></th></tr></thead>
+        <tbody>
+        {% for a in adjustments %}
+            <tr>
+                <td>{{a.adjustment_number}}</td>
+                <td>{{a.product.name}}<div class="small text-muted font-monospace" dir="ltr" style="text-align:right">{{a.product.barcode or ''}}</div></td>
+                <td>{{a.warehouse.name}}</td>
+                <td>{{a.old_quantity}}</td>
+                <td>{{a.new_quantity}}</td>
+                <td class="{{ 'text-success fw-bold' if a.difference > 0 else ('text-danger fw-bold' if a.difference < 0 else '') }}">{{a.difference}}</td>
+                <td>{{a.reason}}</td>
+                <td>{{a.user.full_name if a.user else '-'}}</td>
+                <td>{{a.created_at}}</td>
+                <td class="text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editAdj{{a.id}}"><i class="bi bi-pencil"></i></button>
+                    <form method="POST" action="{{ url_for('delete_inventory_adjustment', aid=a.id) }}" class="d-inline" onsubmit="return confirm('حذف هذه التسوية؟ سيتم عكس أثرها على كمية المخزون الحالية.')">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                </td>
+            </tr>
+            <div class="modal fade" id="editAdj{{a.id}}" tabindex="-1">
+                <div class="modal-dialog"><div class="modal-content">
+                    <form method="POST" action="{{ url_for('edit_inventory_adjustment', aid=a.id) }}">
+                        <div class="modal-header"><h5 class="modal-title">تعديل تسوية - {{a.adjustment_number}}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                        <div class="modal-body">
+                            <label class="form-label">الكمية الجديدة (نهائية)</label>
+                            <input type="number" min="0" name="new_quantity" class="form-control mb-2" value="{{ a.new_quantity }}" required>
+                            <label class="form-label">سبب التعديل</label>
+                            <input type="text" name="reason" class="form-control" value="{{ a.reason }}" required>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                            <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+                        </div>
+                    </form>
+                </div></div>
+            </div>
+        {% else %}
+            <tr><td colspan="10" class="text-center text-muted py-3">لا توجد تسويات مسجلة</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function syncAdjMode() {
+    var mode = document.getElementById('adjMode').value;
+    var setField = document.getElementById('setQtyField');
+    var changeField = document.getElementById('changeQtyField');
+    var changeLabel = document.getElementById('changeQtyLabel');
+    if (mode === 'set') {
+        setField.classList.remove('d-none');
+        changeField.classList.add('d-none');
+    } else {
+        setField.classList.add('d-none');
+        changeField.classList.remove('d-none');
+        changeLabel.textContent = mode === 'increase' ? 'قيمة الزيادة' : 'قيمة النقص';
+    }
+}
+document.getElementById('adjMode').addEventListener('change', syncAdjMode);
+syncAdjMode();
+
+// ---- تسوية فردية: الباركود يحدد المنتج ثم ننتقل لخانة الكمية
+document.getElementById('adjBarcode').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const code = this.value.trim(); if (!code) return;
+    const sel = document.getElementById('adjProduct'), msg = document.getElementById('adjBarcodeMsg');
+    const opt = Array.from(sel.options).find(o => o.dataset.barcode === code);
+    if (!opt) { msg.innerHTML = '<span class="text-danger">الباركود غير موجود</span>'; return; }
+    sel.value = opt.value; msg.innerHTML = '<span class="text-success">' + opt.text.split(' — ')[0] + '</span>'; this.value = '';
+    (document.getElementById('setQtyField').classList.contains('d-none') ? document.querySelector('#changeQtyField input') : document.querySelector('#setQtyField input')).focus();
+});
+
+// ---- تسوية/جرد دفعة واحدة
+(function () {
+    const body = document.querySelector('#batchTable tbody'), input = document.getElementById('batchBarcode');
+    const msg = document.getElementById('batchMsg'), count = document.getElementById('batchCount');
+    const note = (t, c) => { msg.innerHTML = '<span class="text-' + c + '">' + t + '</span>'; };
+    const renumber = () => { body.querySelectorAll('tr').forEach((tr, i) => tr.querySelector('.n').textContent = i + 1); count.textContent = body.querySelectorAll('tr').length; };
+    function addLine(p) {
+        const existing = body.querySelector('tr[data-id="' + p.id + '"]');
+        if (existing) { existing.scrollIntoView({ block: 'nearest' }); const q = existing.querySelector('input[name="new_quantity[]"]'); q.focus(); q.select(); note('هذا الصنف مضاف مسبقًا - عدّل كميته في سطره', 'warning'); return; }
+        const tr = document.createElement('tr'); tr.dataset.id = p.id;
+        tr.innerHTML = '<td class="n text-muted"></td><td class="font-monospace" dir="ltr" style="text-align:right"></td><td></td><td class="cur"></td>' +
+            '<td><input type="number" min="0" name="new_quantity[]" class="form-control form-control-sm" required><input type="hidden" name="product_id[]" value="' + p.id + '"></td>' +
+            '<td><button type="button" class="btn btn-outline-danger btn-sm rm"><i class="bi bi-x"></i></button></td>';
+        tr.children[1].textContent = p.barcode; tr.children[2].textContent = p.name; tr.querySelector('.cur').textContent = p.quantity;
+        body.appendChild(tr); renumber(); tr.scrollIntoView({ block: 'nearest' });
+        const q = tr.querySelector('input[name="new_quantity[]"]'); q.focus();
+        note('أُضيف: ' + p.name + ' (' + p.barcode + ')', 'success');
+    }
+    input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const code = input.value.trim(); input.value = ''; if (!code) return;
+        fetch('/inventory/lookup?barcode=' + encodeURIComponent(code) + '&warehouse_id=' + document.getElementById('batchWarehouse').value)
+            .then(r => r.json().then(d => ({ ok: r.ok, d })))
+            .then(({ ok, d }) => ok ? addLine(d) : note(d.error || 'غير موجود', 'danger'))
+            .catch(() => note('تعذر الاتصال بالخادم', 'danger'));
+    });
+    // Enter في خانة الكمية يعيدك لخانة الباركود لمسح الصنف التالي
+    body.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.name === 'new_quantity[]') { e.preventDefault(); input.focus(); } });
+    body.addEventListener('click', function (e) { const b = e.target.closest('.rm'); if (b) { b.closest('tr').remove(); renumber(); } });
+    // تغيير المخزن يعني أن الكميات الحالية المعروضة لم تعد صحيحة: نفرّغ الجدول
+    const wh = document.getElementById('batchWarehouse'); let whPrev = wh.value;
+    wh.addEventListener('change', function () {
+        if (body.children.length) {
+            if (!confirm('تغيير المخزن سيفرّغ الأصناف المضافة. متابعة؟')) { wh.value = whPrev; return; }
+            body.innerHTML = ''; renumber();
+        }
+        whPrev = wh.value;
+    });
+    document.getElementById('batchForm').addEventListener('submit', function (e) {
+        if (!body.children.length) { e.preventDefault(); note('أضف صنفًا واحدًا على الأقل', 'danger'); return; }
+        if (!confirm('تنفيذ تسوية ' + body.children.length + ' صنف؟ سيتم تعديل كميات المخزون.')) e.preventDefault();
+    });
+})();
+</script>
+{% endblock %}

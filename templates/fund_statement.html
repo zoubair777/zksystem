@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}كشف حساب - {{ fund.name }}{% endblock %}
+{% block content %}
+<style>@media print{.no-print,.sidebar,nav,header,#aiAssistantWidget{display:none!important}.card{border:none!important;box-shadow:none!important}}</style>
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4 class="mb-0"><i class="bi bi-journal-text"></i> كشف حساب: {{ fund.name }}</h4>
+    <div><a href="{{ url_for('fund_accounts') }}" class="btn btn-outline-secondary btn-sm">رجوع</a>
+        <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> طباعة</button></div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">{{ 'خزنة عملة' if fund.kind == 'cash' else 'حساب بنكي' }} · {{ fund.currency_code }}</div><div class="fw-bold">{{ fund.name }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">الرصيد الحالي</div><div class="fw-bold fs-5 {{ 'text-danger' if balance < 0 }}" dir="ltr">{{ "{:,.2f}".format(balance) }} {{ fund.currency_code }}</div></div></div></div>
+    {% if avg_rate %}<div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">متوسط سعر الشراء · قيمته بالدينار</div><div class="fw-bold">1 = {{ "%g"|format(avg_rate) }} د.ل · {{ "{:,.2f}".format(balance * avg_rate) }} د.ل</div></div></div></div>{% endif %}
+</div>
+<div class="card">
+    <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>التاريخ</th><th>الحركة</th><th>البيان</th><th class="text-end">داخل</th><th class="text-end">خارج</th><th class="text-end">الرصيد</th></tr></thead>
+        <tbody>
+            <tr class="table-secondary"><td colspan="5">رصيد افتتاحي</td><td class="text-end fw-bold">{{ "{:,.2f}".format(fund.opening_balance or 0) }}</td></tr>
+            {% for r in rows %}
+            <tr>
+                <td class="text-nowrap">{{ (r.date|local).strftime('%Y-%m-%d %H:%M') if r.date else '-' }}</td>
+                <td>{{ r.label }}</td><td class="small">{{ r.desc }}</td>
+                <td class="text-end text-success">{% if r.amount > 0 %}{{ "{:,.2f}".format(r.amount) }}{% endif %}</td>
+                <td class="text-end text-danger">{% if r.amount < 0 %}{{ "{:,.2f}".format(-r.amount) }}{% endif %}</td>
+                <td class="text-end fw-bold">{{ "{:,.2f}".format(r.balance) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا توجد حركات بعد</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}

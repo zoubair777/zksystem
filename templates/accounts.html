@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pager %}
+{% block title %}الحسابات{% endblock %}
+{% block content %}
+<h4 class="mb-3">الحسابات</h4>
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="stat-card bg-success-soft"><i class="bi bi-arrow-down-circle"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_income) }}</span><span class="stat-label">إجمالي الإيرادات ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card bg-danger-soft"><i class="bi bi-arrow-up-circle"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_expense) }}</span><span class="stat-label">إجمالي المصروفات ({{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card bg-warning-soft"><i class="bi bi-people"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_employee_advances_open) }}</span><span class="stat-label">سلف موظفين قائمة (لم تُسدّد بعد، {{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card bg-secondary-soft"><i class="bi bi-person-badge"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_owner_withdrawals) }}</span><span class="stat-label">إجمالي سحوبات المالك ({{ currency }})</span>{% if current_user.has_permission('financial_report') %}<a href="{{ url_for('owner_withdrawals_report') }}" class="small"><i class="bi bi-calendar3"></i> متى سحب؟ (تفصيل بالتواريخ)</a>{% endif %}</div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card bg-dark-soft"><i class="bi bi-truck"></i>
+            <div><span class="stat-num" dir="ltr">{{ total_supplier_debt }}</span><span class="stat-label">مستحقات لموردين (لم تُسدّد بعد، كل عملة لوحدها)</span></div>
+        </div>
+    </div>
+</div>
+<div class="alert alert-info small">
+    <i class="bi bi-info-circle"></i>
+    السلف (لموظفين أو لأشخاص من خارج الموظفين) وسحوبات المالك لا تُحتسب ضمن "إجمالي المصروفات" أعلاه
+    لأنها لا تؤثر على الربح الصافي - راجع <a href="{{ url_for('financial_report') }}">التقرير المالي</a>
+    لعرض الربح الصافي الحقيقي.
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">تسجيل حركة مالية جديدة</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('add_account_entry') }}" id="entryForm">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">نوع الحركة</label>
+                    <select name="entry_type" id="entryType" class="form-select">
+                        <option value="income">إيراد عام</option>
+                        <option value="expense">مصروف عام</option>
+                        <option value="customer_payment">تحصيل من عميل (سند قبض)</option>
+                        <option value="customer_debt">إضافة دين على عميل (بدون فاتورة بيع)</option>
+                        <option value="supplier_payment">دفع لمورد (سند صرف)</option>
+                        <option value="employee_advance">سلفة لموظف (تُخصم من الراتب لاحقًا)</option>
+                        <option value="employee_repayment">تسديد/خصم سلفة موظف</option>
+                        {% if current_user.has_permission('employee_draw') %}
+                        <option value="employee_draw">سحب على الحساب لموظف (بدون سقف)</option>
+                        {% endif %}
+                        <option value="salary_payment">دفع راتب (مصروف حقيقي - استخدم زر "راتب" في صفحة الموظفين لخصم السلفة تلقائيًا)</option>
+                        {% if current_user.has_permission('external_borrowers') %}
+                        <option value="external_advance">سلفة لشخص من خارج الموظفين</option>
+                        <option value="external_repayment">تسديد سلفة شخص من خارج الموظفين</option>
+                        <option value="loan_received">المحل أخذ قرض/سلفة من بنك أو شخص</option>
+                        <option value="loan_repayment">تسديد قرض/سلفة أخذها المحل</option>
+                        {% endif %}
+                        {% if current_user.has_permission('owner_withdrawal') %}
+                        <option value="owner_withdrawal">سحب مالك (بدون راتب ولا سقف)</option>
+                        {% endif %}
+                    </select>
+                </div>
+                <div class="col-md-3" id="customerField" style="display:none">
+                    <label class="form-label">العميل</label>
+                    <select name="customer_id" id="customerSelect" class="form-select">
+                        {% for c in customers %}<option value="{{ c.id }}">{{ c.name }} (دين: {{ "%.2f"|format(c.balance) }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3" id="supplierField" style="display:none">
+                    <label class="form-label">المورد</label>
+                    <select name="supplier_id" id="supplierSelect" class="form-select">
+                        {% for s in suppliers %}<option value="{{ s.id }}" data-currency="{{ s.currency_code or 'LYD' }}">{{ s.name }} (مستحق: {{ "%.2f"|format(s.balance) }} {{ s.currency_code or 'LYD' }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3" id="supplierForeignField" style="display:none">
+                    <label class="form-label">المبلغ اللي وصل المورد (<span class="js-cur"></span>)</label>
+                    <input type="number" step="0.01" min="0.01" name="foreign_amount" id="supplierForeign" class="form-control">
+                    <div class="form-text">اكتب المبلغ بالدينار وهذا المبلغ، والسعر يتحسب بروحه.</div>
+                </div>
+                <div class="col-md-3" id="supplierRateField" style="display:none">
+                    <label class="form-label">سعر الصرف: كم دينار = 1 <span class="js-cur"></span></label>
+                    <input type="number" step="0.000001" min="0.000001" name="exchange_rate" id="supplierRate" class="form-control">
+                    <div class="form-text" id="supplierRatePreview"></div>
+                </div>
+                <div class="col-md-3" id="employeeField" style="display:none">
+                    <label class="form-label">الموظف</label>
+                    <select name="employee_id" id="employeeSelect" class="form-select">
+                        {% for emp in employees %}<option value="{{ emp.id }}">{{ emp.name }} (سلفة حالية: {{ "%.2f"|format(emp.balance) }})</option>{% endfor %}
+                    </select>
+                    {% if not employees %}<div class="form-text text-danger">لا يوجد موظفون مسجّلون، أضف موظفًا أولاً من صفحة "الموظفون وسلفهم".</div>{% endif %}
+                </div>
+                <div class="col-md-3" id="externalField" style="display:none">
+                    <label class="form-label">الشخص</label>
+                    <select name="external_borrower_id" id="externalSelect" class="form-select">
+                        {% for b in external_borrowers %}<option value="{{ b.id }}">{{ b.name }} (سلفة حالية: {{ "%.2f"|format(b.balance) }})</option>{% endfor %}
+                    </select>
+                    <div class="form-text">لم تجد الاسم؟ أضفه من <a href="{{ url_for('external_borrowers') }}">صفحة سلف الأشخاص من خارج الموظفين</a> ثم عد لهنا.</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">المبلغ ({{ currency }})</label>
+                    <input type="number" step="0.01" name="amount" class="form-control" required>
+                </div>
+                <div class="col-md-3" id="paymentMethodField">
+                    <label class="form-label">طريقة الدفع</label>
+                    <select name="payment_method" id="paymentMethod" class="form-select">
+                        <option value="cash">نقدي</option>
+                        <option value="bank">بنكي</option>
+                    </select>
+                </div>
+                {% if funds %}
+                <div class="col-md-3" id="fundField" style="display:none">
+                    <label class="form-label">الحساب البنكي / خزنة العملة</label>
+                    <select name="fund_account_id" id="fundSelect" class="form-select">
+                        {% for v in funds %}<option value="{{ v.fund.id }}" data-cur="{{ v.fund.currency_code }}" data-rate="{{ v.avg_rate or '' }}" {{ 'selected' if v.fund.is_default }}>{{ v.fund.name }} ({{ "{:,.2f}".format(v.balance) }} {{ v.fund.currency_code }})</option>{% endfor %}
+                    </select>
+                    <div class="form-text">حساب بعملة أجنبية يُستعمل فقط للدفع لمورد بنفس العملة.</div>
+                </div>
+                {% endif %}
+                <div class="col-md-3" id="cashboxField">
+                    {% if scope_cashbox %}
+                    <label class="form-label">نقطة البيع/الفرع</label>
+                    <input type="text" class="form-control" value="{{ current_user.cashbox.name if current_user.cashbox else '' }}" disabled>
+                    <div class="form-text">هذه الحركة تُسجَّل تلقائيًا على فرعك، ولا تقدر تسجّلها على فرع آخر.</div>
+                    {% else %}
+                    <label class="form-label">نقطة البيع/الفرع (للتصنيف، والنقدي منها يُخصم/يُضاف من رصيدها فورًا)</label>
+                    <select name="cashbox_id" class="form-select">
+                        <option value="">-- بدون ربط بفرع --</option>
+                        {% for box in cashboxes %}<option value="{{ box.id }}">{{ box.name }} (الرصيد: {{ "%.2f"|format(box.balance) }})</option>{% endfor %}
+                    </select>
+                    {% endif %}
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">ملاحظة (سبب الدين مثلاً)</label>
+                    <input type="text" name="note" class="form-control">
+                </div>
+                <div class="col-md-3 d-flex align-items-end" id="forceField" style="display:none">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="force" value="1" id="forceCheck">
+                        <label class="form-check-label" for="forceCheck">تجاوز سقف الائتمان/السلفة إن تم تجاوزه</label>
+                    </div>
+                    {% if not current_user.has_permission('advance_override_limit') %}
+                    <div class="form-text text-danger">لا تملك صلاحية تجاوز سقف سلفة الموظف — سيُرفض التجاوز حتى لو فعّلت الخيار.</div>
+                    {% endif %}
+                </div>
+            </div>
+            <button class="btn btn-primary mt-3"><i class="bi bi-save"></i> حفظ</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-2">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            {% if request.args.get('cashbox_id') %}<input type="hidden" name="cashbox_id" value="{{ request.args.get('cashbox_id') }}">{% endif %}
+            <div class="col-md-2"><label class="form-label small mb-1">من تاريخ</label><input type="date" name="start" value="{{ start }}" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label class="form-label small mb-1">إلى تاريخ</label><input type="date" name="end" value="{{ end }}" class="form-control form-control-sm"></div>
+            <div class="col-md-3"><label class="form-label small mb-1">نوع الحركة</label>
+                <select name="f_type" class="form-select form-select-sm">
+                    <option value="">كل الأنواع</option>
+                    {% for v, l in [('income','إيراد'),('expense','مصروف'),('customer_payment','تحصيل من عميل'),('customer_debt','دين يدوي على عميل'),
+                                    ('supplier_payment','دفع لمورد'),('employee_advance','سلفة موظف'),('employee_repayment','تسديد سلفة موظف'),
+                                    ('employee_draw','سحب على الحساب'),('salary_payment','دفع راتب'),('external_advance','سلفة شخص خارجي'),
+                                    ('external_repayment','تسديد سلفة شخص خارجي'),('loan_received','قرض للمحل'),('loan_repayment','تسديد قرض'),
+                                    ('owner_withdrawal','سحب مالك'),('customer_discount','خصم عميل'),('inventory_loss','خسارة مخزون'),('sales_return','إرجاع/فرق استبدال'),('purchase_cost','مصاريف شراء (شحن/جمارك)')] %}
+                    <option value="{{ v }}" {{ 'selected' if f_type == v }}>{{ l }}</option>
+                    {% endfor %}
+                </select></div>
+            <div class="col-md-3"><label class="form-label small mb-1">بحث في الملاحظة</label><input type="text" name="q" value="{{ q_text }}" class="form-control form-control-sm"></div>
+            <div class="col-md-2 d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-search"></i> عرض</button>
+                {% if start or end or f_type or q_text %}<a href="{{ url_for('accounts', cashbox_id=request.args.get('cashbox_id')) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></a>{% endif %}
+            </div>
+        </form>
+        <div class="small text-muted mt-2">
+            {{ pager.total }} حركة{% if filtered_total is not none %} — مجموع مبالغها: <strong>{{ "%.2f"|format(filtered_total) }} {{ currency }}</strong>{% endif %}
+            {% if pager.pages > 1 %} — صفحة {{ pager.page }} من {{ pager.pages }}{% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+    <table class="table mb-0">
+        <thead><tr><th>التاريخ</th><th>النوع</th><th>الدفع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr></thead>
+        <tbody>
+        {% for e in entries %}
+            <tr>
+                <td>{{ (e.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    {% if e.entry_type == 'income' %}إيراد
+                    {% elif e.entry_type == 'expense' %}مصروف
+                    {% elif e.entry_type == 'customer_payment' %}تحصيل من {{ e.customer.name if e.customer }}
+                    {% elif e.entry_type == 'customer_debt' %}دين يدوي على {{ e.customer.name if e.customer }}
+                    {% elif e.entry_type == 'supplier_payment' %}دفع لمورد {{ e.supplier.name if e.supplier }}
+                    {% elif e.entry_type == 'employee_advance' %}سلفة لموظف: {{ e.employee.name if e.employee }}
+                    {% elif e.entry_type == 'employee_repayment' %}تسديد سلفة: {{ e.employee.name if e.employee }}
+                    {% elif e.entry_type == 'external_advance' %}سلفة لشخص خارجي: {{ e.external_borrower.name if e.external_borrower }}
+                    {% elif e.entry_type == 'external_repayment' %}تسديد سلفة شخص خارجي: {{ e.external_borrower.name if e.external_borrower }}
+                    {% elif e.entry_type == 'employee_draw' %}سحب على الحساب: {{ e.employee.name if e.employee }}
+                    {% elif e.entry_type == 'salary_payment' %}دفع راتب: {{ e.employee.name if e.employee else '-' }}
+                    {% elif e.entry_type == 'customer_discount' %}خصم على {{ e.customer.name if e.customer }}
+                    {% elif e.entry_type == 'inventory_loss' %}خسارة مخزون
+                    {% elif e.entry_type == 'sales_return' %}إرجاع فاتورة{% if e.customer %}: {{ e.customer.name }}{% endif %}
+                    {% elif e.entry_type == 'loan_received' %}قرض من {{ e.external_borrower.name if e.external_borrower }}
+                    {% elif e.entry_type == 'loan_repayment' %}تسديد قرض لـ{{ e.external_borrower.name if e.external_borrower }}
+                    {% elif e.entry_type == 'owner_withdrawal' %}سحب مالك
+                    {% elif e.entry_type == 'purchase_cost' %}مصاريف شراء (شحن/جمارك)
+                    {% else %}{{ e.entry_type }}{% endif %}
+                </td>
+                <td>{% if e.payment_method == 'bank' %}بنكي{% elif e.payment_method == 'cash' %}نقدي{% else %}-{% endif %}</td>
+                <td>{{ "%.2f"|format(e.amount) }}
+                    {% if e.entry_type == 'supplier_payment' and (e.currency_code or 'LYD') != 'LYD' and (e.exchange_rate or 1) != 1 %}
+                    <div class="small text-muted" dir="ltr" style="text-align:right">= {{ "{:,.2f}".format(e.supplier_amount()) }} {{ e.currency_code }} @ {{ "%g"|format(e.exchange_rate|round(4)) }}</div>
+                    {% endif %}</td>
+                <td>{{ e.note or '-' }}</td>
+                <td class="text-nowrap">
+                    {% if e.id in locked_ids %}
+                    <span class="text-muted small" title="قيد تلقائي من عملية أخرى (إرجاع/تسوية/شراء) - يُعدَّل من مصدره"><i class="bi bi-lock"></i> تلقائي</span>
+                    {% else %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary edit-entry"
+                            data-id="{{ e.id }}" data-type="{{ e.entry_type }}" data-amount="{{ e.amount }}"
+                            data-method="{{ e.payment_method or '' }}" data-cashbox="{{ e.cashbox_id or '' }}"
+                            data-customer="{{ e.customer_id or '' }}" data-supplier="{{ e.supplier_id or '' }}"
+                            data-employee="{{ e.employee_id or '' }}" data-borrower="{{ e.external_borrower_id or '' }}"
+                            data-note="{{ e.note or '' }}" data-rate="{{ e.exchange_rate or 1 }}"
+                            data-fund="{{ e.fund_account_id or '' }}"
+                            data-foreign="{{ e.supplier_amount() if e.entry_type == 'supplier_payment' and (e.exchange_rate or 1) != 1 else '' }}"><i class="bi bi-pencil"></i></button>
+                    <a href="{{ url_for('delete_account_entry', eid=e.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف الحركة المالية؟ سيتم عكس أثرها على الرصيد المرتبط.')"><i class="bi bi-trash"></i></a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا توجد حركات مالية</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+{{ render_pager(pager, 'accounts') }}
+
+<!-- نافذة تعديل واحدة مشتركة لكل الحركات (تُعبّأ بالجافاسكربت عند الضغط على زر التعديل) -->
+<div class="modal fade" id="editEntryModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+        <form method="POST" id="editEntryForm" data-action-template="{{ url_for('edit_account_entry', eid=0) }}">
+            <div class="modal-header"><h5 class="modal-title">تعديل الحركة المالية</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <label class="form-label">نوع الحركة</label>
+                <select name="entry_type" id="editType" class="form-select mb-2">
+                    <option value="income">إيراد عام</option>
+                    <option value="expense">مصروف عام</option>
+                    <option value="customer_payment">تحصيل من عميل (سند قبض)</option>
+                    <option value="customer_debt">إضافة دين على عميل</option>
+                    <option value="supplier_payment">دفع لمورد (سند صرف)</option>
+                    <option value="employee_advance">سلفة لموظف</option>
+                    <option value="employee_repayment">تسديد سلفة موظف</option>
+                    {% if current_user.has_permission('employee_draw') %}
+                    <option value="employee_draw">سحب على الحساب لموظف</option>
+                    {% endif %}
+                    <option value="salary_payment">دفع راتب</option>
+                    {% if current_user.has_permission('external_borrowers') %}
+                    <option value="external_advance">سلفة لشخص من خارج الموظفين</option>
+                    <option value="external_repayment">تسديد سلفة شخص من خارج الموظفين</option>
+                    <option value="loan_received">المحل أخذ قرض/سلفة من بنك أو شخص</option>
+                    <option value="loan_repayment">تسديد قرض/سلفة أخذها المحل</option>
+                    {% endif %}
+                    {% if current_user.has_permission('owner_withdrawal') %}
+                    <option value="owner_withdrawal">سحب مالك</option>
+                    {% endif %}
+                    <option value="customer_discount">خصم عميل</option>
+                    <option value="inventory_loss">خسارة مخزون</option>
+                    <option value="sales_return">إرجاع فاتورة بيع</option>
+                </select>
+
+                <div id="editCustomerField" class="mb-2" style="display:none">
+                    <label class="form-label">العميل</label>
+                    <select name="customer_id" id="editCustomer" class="form-select">
+                        {% for c in customers %}<option value="{{ c.id }}">{{ c.name }} (دين: {{ "%.2f"|format(c.balance) }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div id="editSupplierField" class="mb-2" style="display:none">
+                    <label class="form-label">المورد</label>
+                    <select name="supplier_id" id="editSupplier" class="form-select">
+                        {% for s in suppliers %}<option value="{{ s.id }}" data-currency="{{ s.currency_code or 'LYD' }}">{{ s.name }} (مستحق: {{ "%.2f"|format(s.balance) }} {{ s.currency_code or 'LYD' }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div id="editRateField" class="mb-2" style="display:none">
+                    <label class="form-label">المبلغ اللي وصل المورد (<span class="js-cur"></span>)</label>
+                    <input type="number" step="0.01" min="0.01" name="foreign_amount" id="editForeign" class="form-control mb-2">
+                    <label class="form-label">سعر الصرف: كم دينار = 1 <span class="js-cur"></span></label>
+                    <input type="number" step="0.000001" min="0.000001" name="exchange_rate" id="editRate" class="form-control">
+                    <div class="form-text">اكتب المبلغ بالدينار تحت مع واحد من الاثنين، والثاني يتحسب بروحه.</div>
+                </div>
+                <div id="editEmployeeField" class="mb-2" style="display:none">
+                    <label class="form-label">الموظف</label>
+                    <select name="employee_id" id="editEmployee" class="form-select">
+                        {% for emp in employees %}<option value="{{ emp.id }}">{{ emp.name }} (سلفة حالية: {{ "%.2f"|format(emp.balance) }})</option>{% endfor %}
+                    </select>
+                </div>
+                <div id="editExternalField" class="mb-2" style="display:none">
+                    <label class="form-label">الشخص</label>
+                    <select name="external_borrower_id" id="editExternal" class="form-select">
+                        {% for b in external_borrowers %}<option value="{{ b.id }}">{{ b.name }} (سلفة حالية: {{ "%.2f"|format(b.balance) }})</option>{% endfor %}
+                    </select>
+                </div>
+
+                <label class="form-label">المبلغ ({{ currency }})</label>
+                <input type="number" step="0.01" name="amount" id="editAmount" class="form-control mb-2" required>
+                <label class="form-label">طريقة الدفع</label>
+                <select name="payment_method" id="editMethod" class="form-select mb-2">
+                    <option value="cash">نقدي</option>
+                    <option value="bank">بنكي</option>
+                </select>
+                {% if funds %}
+                <div id="editFundField" style="display:none">
+                <label class="form-label">الحساب البنكي / خزنة العملة</label>
+                <select name="fund_account_id" id="editFund" class="form-select mb-2">
+                    <option value="">-- بدون حساب (حركة قديمة) --</option>
+                    {% for v in funds %}<option value="{{ v.fund.id }}" data-cur="{{ v.fund.currency_code }}">{{ v.fund.name }} ({{ v.fund.currency_code }})</option>{% endfor %}
+                </select>
+                </div>
+                {% endif %}
+                {% if not scope_cashbox %}
+                <label class="form-label">نقطة البيع/الفرع</label>
+                <select name="cashbox_id" id="editCashbox" class="form-select mb-2">
+                    <option value="">-- بدون ربط بفرع --</option>
+                    {% for box in cashboxes %}<option value="{{ box.id }}">{{ box.name }} (الرصيد: {{ "%.2f"|format(box.balance) }})</option>{% endfor %}
+                </select>
+                {% endif %}
+                <label class="form-label">ملاحظة</label>
+                <input type="text" name="note" id="editNote" class="form-control mb-2">
+
+                <div id="editForceField" class="form-check" style="display:none">
+                    <input class="form-check-input" type="checkbox" name="force" value="1" id="editForceCheck">
+                    <label class="form-check-label" for="editForceCheck">تجاوز سقف الائتمان/السلفة إن تم تجاوزه</label>
+                </div>
+                <div class="form-text text-warning">
+                    تغيير "نوع الحركة" هنا يعكس أثر الحركة القديمة بالكامل عن الطرف المرتبط بها (العميل/المورد/الموظف/الشخص)
+                    ويطبّق أثر النوع والطرف الجديدين من جديد. راجع الأرصدة بعد الحفظ.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+            </div>
+        </form>
+    </div></div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+function syncEntryFields() {
+    var t = document.getElementById('entryType').value;
+    document.getElementById('customerField').style.display = (t === 'customer_payment' || t === 'customer_debt') ? 'block' : 'none';
+    document.getElementById('supplierField').style.display = t === 'supplier_payment' ? 'block' : 'none';
+    document.getElementById('employeeField').style.display = (t === 'employee_advance' || t === 'employee_repayment' || t === 'employee_draw' || t === 'salary_payment') ? 'block' : 'none';
+    document.getElementById('externalField').style.display = (t === 'external_advance' || t === 'external_repayment' || t === 'loan_received' || t === 'loan_repayment') ? 'block' : 'none';
+    document.getElementById('forceField').style.display = (t === 'customer_debt' || t === 'employee_advance') ? 'block' : 'none';
+    // خانة بنكي/نقد لا تنطبق على الدين اليدوي (لا حركة نقدية فعلية)
+    document.getElementById('paymentMethodField').style.display = t === 'customer_debt' ? 'none' : 'block';
+}
+document.getElementById('entryType').addEventListener('change', syncEntryFields);
+
+// دفعة لمورد بعملة أجنبية: المبلغ بالدينار (ما يخرج من الخزينة) + سعر الصرف ⇒ ما يُخصم من رصيد المورد بعملته
+function selectedCurrency(sel) { var o = sel && sel.options[sel.selectedIndex]; return o ? (o.dataset.currency || 'LYD') : 'LYD'; }
+// ثلاث خانات (دينار، عملة المورد، السعر): يكتب المالك اثنتين والثالثة تُحسب. آخر خانة كتب فيها من
+// (العملة/السعر) هي الثابتة عند تغيير مبلغ الدينار. الخادم يعيد الحساب بنفسه ولا يثق بهذه الأرقام.
+function linkFx(amountEl, foreignEl, rateEl) {
+    var last = 'foreign';
+    function num(el) { return parseFloat(el.value) || 0; }
+    function calc(src) {
+        if (src === 'foreign' || src === 'rate') last = src;
+        var a = num(amountEl);
+        if (!a || (src !== 'amount' && amountEl.dataset.auto)) {
+            // الدفع من خزنة عملة: يُعرف المبلغ الأجنبي وسعر شرائه، فيُحسب مقابله بالدينار
+            if (num(foreignEl) && num(rateEl)) { amountEl.value = (num(foreignEl) * num(rateEl)).toFixed(2); amountEl.dataset.auto = '1'; }
+            return;
+        }
+        if (src === 'amount') delete amountEl.dataset.auto;
+        if (last === 'foreign' && num(foreignEl)) rateEl.value = +(a / num(foreignEl)).toFixed(6);
+        else if (num(rateEl)) foreignEl.value = (a / num(rateEl)).toFixed(2);
+    }
+    amountEl.addEventListener('input', function () { calc('amount'); });
+    foreignEl.addEventListener('input', function () { calc('foreign'); });
+    rateEl.addEventListener('input', function () { calc('rate'); });
+}
+linkFx(document.querySelector('#entryForm input[name=amount]'), document.getElementById('supplierForeign'), document.getElementById('supplierRate'));
+linkFx(document.getElementById('editAmount'), document.getElementById('editForeign'), document.getElementById('editRate'));
+
+function syncSupplierRate() {
+    var t = document.getElementById('entryType').value, cur = selectedCurrency(document.getElementById('supplierSelect'));
+    var show = t === 'supplier_payment' && cur !== 'LYD';
+    ['supplierRateField', 'supplierForeignField'].forEach(function (id) {
+        var f = document.getElementById(id);
+        f.style.display = show ? 'block' : 'none';
+        f.querySelector('.js-cur').textContent = cur;
+    });
+    var amt = parseFloat(document.querySelector('#entryForm input[name=amount]').value) || 0;
+    var foreign = parseFloat(document.getElementById('supplierForeign').value) || 0;
+    document.getElementById('supplierRatePreview').textContent = (show && amt && foreign)
+        ? ('يخرج ' + amt.toFixed(2) + ' د.ل ويُخصم من رصيد المورد ' + foreign.toFixed(2) + ' ' + cur) : '';
+}
+['entryType', 'supplierSelect', 'supplierRate', 'supplierForeign'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', syncSupplierRate);
+    document.getElementById(id).addEventListener('change', syncSupplierRate);
+});
+document.querySelector('#entryForm input[name=amount]').addEventListener('input', syncSupplierRate);
+
+// خانة الحساب البنكي تظهر مع الدفع البنكي فقط. عند اختيار خزنة عملة لدفع مورد يُقترح متوسط سعر شرائها.
+function syncFund() {
+    var field = document.getElementById('fundField');
+    if (!field) return;
+    var bank = document.getElementById('paymentMethod').value === 'bank' && document.getElementById('entryType').value !== 'customer_debt';
+    field.style.display = bank ? 'block' : 'none';
+    var sel = document.getElementById('fundSelect'); sel.disabled = !bank;
+    var o = sel.options[sel.selectedIndex], rate = document.getElementById('supplierRate');
+    if (bank && o && o.dataset.cur !== 'LYD' && o.dataset.rate && !rate.value) { rate.value = o.dataset.rate; rate.dispatchEvent(new Event('input')); }
+}
+['paymentMethod', 'entryType', 'fundSelect'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.addEventListener('change', syncFund);
+});
+function syncEditFund() {
+    var field = document.getElementById('editFundField');
+    if (!field) return;
+    var bank = document.getElementById('editMethod').value === 'bank';
+    field.style.display = bank ? 'block' : 'none';
+    document.getElementById('editFund').disabled = !bank;
+}
+document.getElementById('editMethod').addEventListener('change', syncEditFund);
+
+// نافذة التعديل المشتركة: تُعبّأ من بيانات الزر (data-*) لكل حركة
+function syncEditFields() {
+    var t = document.getElementById('editType').value;
+    document.getElementById('editCustomerField').style.display = (t === 'customer_payment' || t === 'customer_debt' || t === 'customer_discount' || t === 'sales_return') ? 'block' : 'none';
+    document.getElementById('editSupplierField').style.display = t === 'supplier_payment' ? 'block' : 'none';
+    document.getElementById('editEmployeeField').style.display = (t === 'employee_advance' || t === 'employee_repayment' || t === 'employee_draw' || t === 'salary_payment') ? 'block' : 'none';
+    document.getElementById('editExternalField').style.display = (t === 'external_advance' || t === 'external_repayment' || t === 'loan_received' || t === 'loan_repayment') ? 'block' : 'none';
+    document.getElementById('editForceField').style.display = (t === 'customer_debt' || t === 'employee_advance') ? 'flex' : 'none';
+    var cur = selectedCurrency(document.getElementById('editSupplier'));
+    var showRate = t === 'supplier_payment' && cur !== 'LYD';
+    document.getElementById('editRateField').style.display = showRate ? 'block' : 'none';
+    document.getElementById('editRateField').querySelectorAll('.js-cur').forEach(function (s) { s.textContent = cur; });
+}
+document.getElementById('editSupplier').addEventListener('change', syncEditFields);
+document.getElementById('editType').addEventListener('change', syncEditFields);
+(function () {
+    var form = document.getElementById('editEntryForm');
+    var modal = null;
+    function setVal(id, v) { var el = document.getElementById(id); if (el && v !== '') el.value = v; }
+    document.querySelectorAll('.edit-entry').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var d = btn.dataset;
+            form.reset();
+            form.action = form.dataset.actionTemplate.replace(/0$/, d.id);
+            var typeSel = document.getElementById('editType');
+            if (!typeSel.querySelector('option[value="' + d.type + '"]')) {
+                typeSel.insertAdjacentHTML('beforeend', '<option value="' + d.type + '">' + d.type + '</option>');
+            }
+            typeSel.value = d.type;
+            setVal('editCustomer', d.customer); setVal('editSupplier', d.supplier);
+            setVal('editEmployee', d.employee); setVal('editExternal', d.borrower);
+            document.getElementById('editAmount').value = d.amount;
+            setVal('editMethod', d.method);
+            var box = document.getElementById('editCashbox'); if (box) box.value = d.cashbox;
+            document.getElementById('editNote').value = d.note;
+            document.getElementById('editRate').value = (d.rate && parseFloat(d.rate) !== 1) ? d.rate : '';
+            document.getElementById('editForeign').value = d.foreign || '';
+            var ef = document.getElementById('editFund'); if (ef) ef.value = d.fund || '';
+            syncEditFund();
+            document.getElementById('editForceCheck').checked = false;
+            syncEditFields();
+            modal = modal || new bootstrap.Modal(document.getElementById('editEntryModal'));
+            modal.show();
+        });
+    });
+})();
+
+// دعم الوصول المباشر برابط جاهز، مثال: /accounts?entry_type=employee_advance&employee_id=3
+// أو: /accounts?entry_type=external_advance&external_borrower_id=5
+(function () {
+    var params = new URLSearchParams(window.location.search);
+    var t = params.get('entry_type');
+    var cid = params.get('customer_id');
+    var eid = params.get('employee_id');
+    var bid = params.get('external_borrower_id');
+    if (t) document.getElementById('entryType').value = t;
+    if (cid) document.getElementById('customerSelect').value = cid;
+    if (eid) document.getElementById('employeeSelect').value = eid;
+    if (bid) document.getElementById('externalSelect').value = bid;
+    syncEntryFields();
+    syncSupplierRate();
+    syncFund();
+})();
+</script>
+{% endblock %}

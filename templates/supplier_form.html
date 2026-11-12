@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ 'تعديل مورد' if supplier else 'إضافة مورد' }}{% endblock %}
+{% block content %}
+<h4 class="mb-3">{{ 'تعديل مورد' if supplier else 'إضافة مورد' }}</h4>
+<div class="card"><div class="card-body">
+    <form method="POST">
+        <div class="mb-3"><label class="form-label">الاسم</label><input type="text" name="name" class="form-control" value="{{ supplier.name if supplier else '' }}" required></div>
+        <div class="mb-3"><label class="form-label">الهاتف</label><input type="text" name="phone" class="form-control" value="{{ supplier.phone if supplier else '' }}"></div>
+        <div class="mb-3"><label class="form-label">العنوان</label><input type="text" name="address" class="form-control" value="{{ supplier.address if supplier else '' }}"></div>
+        {% set cur_now = (supplier.currency_code or 'LYD') if supplier else 'LYD' %}
+        <div class="mb-3"><label class="form-label">عملة حساب المورد</label>
+        <select name="currency_code" id="supCurrency" class="form-select" data-old="{{ cur_now }}">
+            {% for c in currency_codes %}<option value="{{ c }}" {% if cur_now==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+        <div class="form-text">فواتيره ورصيده ودفعاته تُحسب بهذه العملة. العملة غير موجودة؟ أضفها من <a href="{{ url_for('currencies_page') }}">صفحة العملات</a>.</div></div>
+        {% if has_history and cur_now == 'LYD' %}
+        <div class="mb-3 alert alert-warning" id="convertBox" style="display:none">
+            <label class="form-label fw-bold">سعر التحويل: كم دينار = 1 <span id="convertCur"></span></label>
+            <input type="number" step="0.0001" min="0.0001" name="convert_rate" id="convertRate" class="form-control">
+            <div class="small mt-2">هذا المورد عنده حركات مسجّلة بالدينار. عند الحفظ تُنقل فواتيره ودفعاته ورصيده إلى العملة الجديدة
+                بهذا السعر. المبالغ بالدينار (ما خرج من الخزينة وتكلفة البضاعة) لا تتغير. بعدها تقدر تصحّح أي فاتورة أو دفعة
+                بمبلغها الفعلي لو كان سعرها مختلفًا.</div>
+        </div>
+        {% endif %}
+        <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+        <a href="{{ url_for('suppliers') }}" class="btn btn-outline-secondary">إلغاء</a>
+    </form>
+</div></div>
+{% endblock %}
+{% block extra_js %}
+<script>
+(function () {
+    var sel = document.getElementById('supCurrency'), box = document.getElementById('convertBox');
+    if (!box) return;
+    function sync() {
+        var changed = sel.value !== sel.dataset.old;
+        box.style.display = changed ? 'block' : 'none';
+        document.getElementById('convertCur').textContent = sel.value;
+        document.getElementById('convertRate').required = changed;
+    }
+    sel.addEventListener('change', sync); sync();
+})();
+</script>
+{% endblock %}

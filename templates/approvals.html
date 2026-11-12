@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}طلبات الموافقة{% endblock %}
+{% block content %}
+<h4 class="mb-3">طلبات الموافقة</h4>
+
+<div class="card mb-4">
+    <div class="card-header">طلبات معلّقة ({{ pending|length }})</div>
+    <table class="table mb-0">
+        <thead><tr><th>الفاتورة</th><th>النوع</th><th>مقدّم الطلب</th><th>السبب</th><th>التاريخ</th><th></th></tr></thead>
+        <tbody>
+        {% for r in pending %}
+            <tr>
+                <td><a href="{{ url_for('invoice_print', iid=r.invoice_id) }}">{{ r.invoice.invoice_number }}</a></td>
+                <td>{{ 'إلغاء فاتورة' if r.request_type=='void_invoice' else 'تعديل فاتورة' }}</td>
+                <td>{{ r.requester.full_name }}</td>
+                <td>{{ r.reason or '-' }}</td>
+                <td>{{ (r.created_at|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('decide_approval', aid=r.id) }}" class="d-flex gap-1">
+                        <input type="hidden" name="decision" value="approve">
+                        <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('تأكيد الموافقة؟')"><i class="bi bi-check"></i> موافقة</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('decide_approval', aid=r.id) }}" class="d-flex gap-1 mt-1">
+                        <input type="hidden" name="decision" value="reject">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('تأكيد الرفض؟')"><i class="bi bi-x"></i> رفض</button>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا توجد طلبات معلّقة</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-header">سجل القرارات السابقة</div>
+    <table class="table mb-0">
+        <thead><tr><th>الفاتورة</th><th>النوع</th><th>القرار</th><th>راجعها</th><th>التاريخ</th></tr></thead>
+        <tbody>
+        {% for r in history %}
+            <tr>
+                <td>{{ r.invoice.invoice_number }}</td>
+                <td>{{ 'إلغاء فاتورة' if r.request_type=='void_invoice' else 'تعديل فاتورة' }}</td>
+                <td><span class="badge {{ 'bg-success' if r.status=='approved' else 'bg-danger' }}">{{ 'موافق عليه' if r.status=='approved' else 'مرفوض' }}</span></td>
+                <td>{{ r.reviewer.full_name if r.reviewer else '-' }}</td>
+                <td>{{ (r.reviewed_at|local).strftime('%Y-%m-%d %H:%M') if r.reviewed_at else '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">لا يوجد سجل سابق</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

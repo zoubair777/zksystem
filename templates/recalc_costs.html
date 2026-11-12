@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}تصحيح تكلفة المنتجات{% endblock %}
+{% block content %}
+<h4 class="mb-2"><i class="bi bi-currency-exchange"></i> تصحيح تكلفة المنتجات المشتراة بعملة أجنبية</h4>
+<div class="alert alert-info small">
+    في الإصدارات السابقة كان سعر الوحدة في فاتورة شراء بالدولار (مثلًا 10$) يُسجَّل تكلفةً للمنتج كأنه 10 دينار.
+    هذه الصفحة تحسب التكلفة الصحيحة بالدينار: <strong>متوسط سعر الوحدة × سعر صرف كل فاتورة</strong> عبر كل فواتير شراء المنتج.
+    راجع القيم، ويمكنك تعديل أي قيمة يدويًا قبل الحفظ. التكلفة تؤثر على الأرباح وقيمة المخزون، بما فيها تقارير الفترات السابقة.
+</div>
+
+{% if rows %}
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="stat-card bg-warning-soft"><i class="bi bi-exclamation-triangle"></i>
+        <div><span class="stat-num">{{ rows|selectattr('differs')|list|length }}</span><span class="stat-label">منتج تكلفته تحتاج تصحيح</span></div></div></div>
+    <div class="col-md-4"><div class="stat-card bg-secondary-soft"><i class="bi bi-box-seam"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(stock_before) }}</span><span class="stat-label">قيمة مخزونها بالتكلفة الحالية ({{ currency }})</span></div></div></div>
+    <div class="col-md-4"><div class="stat-card bg-success-soft"><i class="bi bi-check2-circle"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(stock_after) }}</span><span class="stat-label">قيمتها بالتكلفة المصحّحة ({{ currency }})</span></div></div></div>
+</div>
+
+<form method="POST" onsubmit="return confirm('حفظ التكلفة الجديدة للمنتجات المحددة؟')">
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>المنتجات التي لها فواتير شراء بعملة أجنبية</span>
+        <label class="small"><input type="checkbox" id="checkAll" checked> تحديد كل ما يحتاج تصحيح</label>
+    </div>
+    <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+        <thead><tr>
+            <th></th><th>المنتج</th><th>فواتير الشراء</th><th>العملات</th><th>الكمية المشتراة</th><th>بالمخزون</th>
+            <th>التكلفة الحالية</th><th>آخر شراء (بالدينار)</th><th style="width:140px">التكلفة الصحيحة</th><th>سعر البيع</th><th>الربح للقطعة بعد التصحيح</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+            {% set p = r.product %}
+            <tr class="{{ '' if r.differs else 'text-muted' }}">
+                <td><input type="checkbox" name="apply_{{ p.id }}" value="1" class="row-check" {{ 'checked' if r.differs }}></td>
+                <td>{{ p.name }} <span class="small text-muted">{{ p.size or '' }} {{ p.color or '' }}</span>{{ p|bc }}</td>
+                <td>{{ r.count }}</td>
+                <td>{{ r.currencies }}</td>
+                <td>{{ r.qty }}</td>
+                <td>{{ r.stock }}</td>
+                <td class="{{ 'text-danger fw-bold' if r.differs }}">{{ "%.2f"|format(r.current) }}</td>
+                <td>{{ "%.2f"|format(r.last) }}</td>
+                <td><input type="number" step="0.01" min="0" name="cost_{{ p.id }}" value="{{ '%.2f'|format(r.proposed) }}" class="form-control form-control-sm"></td>
+                <td>{{ "%.2f"|format(p.sale_price or 0) }}</td>
+                {% set profit = (p.sale_price or 0) - r.proposed %}
+                <td class="{{ 'text-danger' if profit < 0 else 'text-success' }}">{{ "%.2f"|format(profit) }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+<button class="btn btn-primary mt-3"><i class="bi bi-save"></i> حفظ التكلفة للمنتجات المحددة</button>
+<a href="{{ url_for('products') }}" class="btn btn-outline-secondary mt-3">رجوع</a>
+</form>
+{% else %}
+<div class="alert alert-success">لا توجد منتجات لها فواتير شراء بعملة أجنبية - لا شيء يحتاج تصحيح.</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const all = document.getElementById('checkAll');
+if (all) all.addEventListener('change', () =>
+    document.querySelectorAll('.row-check').forEach(c => { c.checked = all.checked && !c.closest('tr').classList.contains('text-muted'); }));
+</script>
+{% endblock %}

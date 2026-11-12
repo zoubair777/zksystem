@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% block title %}استبدال - فاتورة {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0"><i class="bi bi-arrow-repeat"></i> استبدال بضاعة - فاتورة {{ invoice.invoice_number }}</h4>
+    <a href="{{ url_for('invoice_print', iid=invoice.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-receipt"></i> الفاتورة الأصلية</a>
+</div>
+<p class="text-muted small mb-3">
+    العميل: <strong>{{ invoice.customer.name if invoice.customer else 'عميل نقدي' }}</strong> |
+    التاريخ: {{ (invoice.date|local).strftime('%Y-%m-%d %H:%M') }} |
+    الإجمالي: {{ "%.2f"|format(invoice.total) }} {{ currency }} |
+    الوردية الحالية #{{ shift.id }} ({{ shift.cashbox.name if shift.cashbox else '-' }})
+</p>
+
+<form method="POST" id="exchangeForm">
+<div class="row g-3">
+    <!-- ١) ما يعيده العميل -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header bg-danger-soft"><i class="bi bi-box-arrow-in-down"></i> ١) الأصناف التي يعيدها العميل</div>
+            <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle">
+                <thead><tr><th>الصنف</th><th>السعر</th><th>المتاح</th><th style="width:110px">يعيد</th></tr></thead>
+                <tbody>
+                {% for item in invoice.items %}
+                    <tr>
+                        <td>{{ item.product.name }}
+                            <div class="small text-muted">{{ item.product.size or '' }} {{ item.product.color or '' }}
+                                <span class="font-monospace" dir="ltr">{{ item.product.barcode or '' }}</span></div></td>
+                        <td>{{ "%.2f"|format(item.unit_price) }}</td>
+                        <td>{{ item.returnable_quantity() }}</td>
+                        <td>
+                            {% if item.returnable_quantity() > 0 %}
+                            <input type="number" name="qty_{{ item.id }}" class="form-control form-control-sm ret-qty"
+                                   min="0" max="{{ item.returnable_quantity() }}" value="0" data-price="{{ item.unit_price }}">
+                            {% else %}<span class="text-muted small">أُرجع بالكامل</span>{% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            <div class="card-footer d-flex justify-content-between">
+                <span>قيمة المُرجَع</span><strong id="returnedTotal">0.00</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- ٢) ما يأخذه العميل بدلها -->
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header bg-success-soft"><i class="bi bi-box-arrow-up"></i> ٢) الأصناف الجديدة التي يأخذها العميل</div>
+            <div class="card-body pb-0">
+                <div class="row g-2 mb-2">
+                    <div class="col-7">
+                        <input type="text" id="newBarcode" class="form-control" placeholder="امسح باركود الصنف الجديد ثم Enter" autocomplete="off">
+                    </div>
+                    <div class="col-5">
+                        <select name="warehouse_id" class="form-select" title="المخزن الذي تخرج منه الأصناف الجديدة">
+                            {% for w in warehouses %}<option value="{{ w.id }}" {{ 'selected' if w.id == default_warehouse_id }}>{{ w.name }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div id="newMsg" class="small mb-2"></div>
+            </div>
+            <div class="table-responsive">
+            <table class="table table-sm mb-0 align-middle" id="newTable">
+                <thead><tr><th>الصنف</th><th>السعر</th><th style="width:100px">الكمية</th><th>الإجمالي</th><th></th></tr></thead>
+                <tbody><tr class="empty"><td colspan="5" class="text-center text-muted py-3">لم تُضف أصناف بعد</td></tr></tbody>
+            </table>
+            </div>
+            <div class="card-footer d-flex justify-content-between">
+                <span>قيمة الجديد</span><strong id="newTotal">0.00</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ٣) تسوية الفرق -->
+<div class="card mt-3">
+    <div class="card-header"><i class="bi bi-calculator"></i> ٣) تسوية الفرق</div>
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <div class="p-3 rounded text-center" id="diffBox" style="background:var(--bs-light)">
+                    <div class="small text-muted" id="diffLabel">تبديل متكافئ</div>
+                    <div class="fs-3 fw-bold" id="diffValue">0.00 {{ currency }}</div>
+                </div>
+            </div>
+            <div class="col-md-3" id="settleWrap">
+                <label class="form-label" id="settleLabel">طريقة التسوية</label>
+                <select name="settle_method" id="settleMethod" class="form-select"></select>
+            </div>
+            <div class="col-md-2 d-none" id="bankNameWrap">
+                <label class="form-label">اسم البنك</label>
+                <input type="text" name="bank_name" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">سبب الاستبدال</label>
+                <input type="text" name="reason" class="form-control" placeholder="مقاس غير مناسب، لون آخر...">
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 mt-3">
+    <button class="btn btn-primary btn-lg" id="submitBtn" disabled><i class="bi bi-check2-circle"></i> تنفيذ الاستبدال وطباعة الإيصال</button>
+    <a href="{{ url_for('sales') }}" class="btn btn-outline-secondary btn-lg">إلغاء</a>
+</div>
+<div id="hiddenNew"></div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    const CUR = "{{ currency }}";
+    const hasCustomer = {{ 'true' if invoice.customer_id else 'false' }};
+    const lookupUrl = "{{ url_for('pos_lookup') }}";
+    const newItems = {};   // id -> {id, name, price, qty, max}
+    const fmt = n => (Math.round(n * 100) / 100).toFixed(2);
+    const $ = id => document.getElementById(id);
+
+    function returnedTotal() {
+        let t = 0;
+        document.querySelectorAll('.ret-qty').forEach(i => {
+            const q = Math.min(parseInt(i.value || 0), parseInt(i.max));
+            if (q > 0) t += q * parseFloat(i.dataset.price);
+        });
+        return Math.round(t * 100) / 100;
+    }
+    function newTotal() {
+        return Math.round(Object.values(newItems).reduce((a, it) => a + it.qty * it.price, 0) * 100) / 100;
+    }
+
+    function setOptions(opts) {
+        const sel = $('settleMethod'), cur = sel.value;
+        sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+        if (opts.some(([v]) => v === cur)) sel.value = cur;
+        $('bankNameWrap').classList.toggle('d-none', sel.value !== 'bank');
+    }
+
+    function refresh() {
+        const r = returnedTotal(), n = newTotal(), d = Math.round((n - r) * 100) / 100;
+        $('returnedTotal').textContent = fmt(r) + ' ' + CUR;
+        $('newTotal').textContent = fmt(n) + ' ' + CUR;
+        $('diffValue').textContent = fmt(Math.abs(d)) + ' ' + CUR;
+        const box = $('diffBox');
+        if (d > 0) {
+            $('diffLabel').textContent = 'يدفع العميل الفرق';
+            box.style.background = 'rgba(25,135,84,.12)';
+            $('settleLabel').textContent = 'طريقة تحصيل الفرق';
+            setOptions([['cash', 'نقدًا'], ['bank', 'بنكي/تحويل']].concat(hasCustomer ? [['credit', 'آجل على العميل']] : []));
+            $('settleWrap').classList.remove('d-none');
+        } else if (d < 0) {
+            $('diffLabel').textContent = 'يُرد للعميل الفرق';
+            box.style.background = 'rgba(220,53,69,.12)';
+            $('settleLabel').textContent = 'طريقة رد الفرق';
+            setOptions([['cash', 'نقدًا من صندوق الوردية'], ['bank', 'تحويل بنكي']].concat(hasCustomer ? [['customer_credit', 'خصم من دين العميل']] : []));
+            $('settleWrap').classList.remove('d-none');
+        } else {
+            $('diffLabel').textContent = 'تبديل متكافئ - لا يوجد فرق';
+            box.style.background = 'var(--bs-light)';
+            setOptions([['cash', '-']]);
+            $('settleWrap').classList.add('d-none');
+            $('bankNameWrap').classList.add('d-none');
+        }
+        $('submitBtn').disabled = !(r > 0 && Object.keys(newItems).length);
+    }
+
+    function renderNew() {
+        const body = document.querySelector('#newTable tbody');
+        const hidden = $('hiddenNew');
+        hidden.innerHTML = '';
+        const items = Object.values(newItems);
+        if (!items.length) {
+            body.innerHTML = '<tr class="empty"><td colspan="5" class="text-center text-muted py-3">لم تُضف أصناف بعد</td></tr>';
+        } else {
+            body.innerHTML = items.map(it => `
+                <tr>
+                    <td>${it.name}<div class="small text-muted font-monospace" dir="ltr" style="text-align:right">${it.barcode || ''}</div></td>
+                    <td>${fmt(it.price)}</td>
+                    <td><input type="number" min="1" max="${it.max}" value="${it.qty}" class="form-control form-control-sm new-qty" data-id="${it.id}"></td>
+                    <td>${fmt(it.qty * it.price)}</td>
+                    <td><button type="button" class="btn btn-sm btn-outline-danger del-new" data-id="${it.id}"><i class="bi bi-x"></i></button></td>
+                </tr>`).join('');
+            items.forEach(it => {
+                hidden.insertAdjacentHTML('beforeend',
+                    `<input type="hidden" name="new_product_id" value="${it.id}"><input type="hidden" name="new_qty" value="${it.qty}">`);
+            });
+        }
+        refresh();
+    }
+
+    function msg(text, type) {
+        $('newMsg').innerHTML = `<span class="text-${type}">${text}</span>`;
+        setTimeout(() => $('newMsg').innerHTML = '', 2500);
+    }
+
+    async function addByBarcode(code) {
+        try {
+            const res = await fetch(lookupUrl + '?barcode=' + encodeURIComponent(code));
+            const data = await res.json();
+            if (!res.ok) return msg(data.error || 'لم يتم العثور على المنتج', 'danger');
+            const cur = newItems[data.id];
+            if ((cur ? cur.qty : 0) + 1 > data.quantity) return msg(`الكمية المتوفرة من "${data.name} (${data.barcode})" غير كافية`, 'danger');
+            if (cur) cur.qty += 1;
+            else newItems[data.id] = { id: data.id, name: data.name, barcode: data.barcode, price: data.price, qty: 1, max: data.quantity };
+            msg('تمت إضافة: ' + data.name + ' (' + data.barcode + ')', 'success');
+            renderNew();
+        } catch (e) { msg('تعذّر الاتصال بالخادم', 'danger'); }
+    }
+
+    $('newBarcode').addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const code = e.target.value.trim();
+        e.target.value = '';
+        if (code) addByBarcode(code);
+    });
+    document.querySelector('#newTable').addEventListener('change', e => {
+        if (!e.target.classList.contains('new-qty')) return;
+        const it = newItems[e.target.dataset.id];
+        it.qty = Math.max(1, Math.min(parseInt(e.target.value || 1), it.max));
+        renderNew();
+    });
+    document.querySelector('#newTable').addEventListener('click', e => {
+        const btn = e.target.closest('.del-new');
+        if (!btn) return;
+        delete newItems[btn.dataset.id];
+        renderNew();
+    });
+    document.querySelectorAll('.ret-qty').forEach(i => i.addEventListener('input', refresh));
+    $('settleMethod').addEventListener('change', () =>
+        $('bankNameWrap').classList.toggle('d-none', $('settleMethod').value !== 'bank'));
+    $('exchangeForm').addEventListener('submit', e => {
+        if (!confirm('تأكيد تنفيذ الاستبدال؟')) e.preventDefault();
+    });
+    refresh();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}استيراد الجرد القديم{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3"><h4>استيراد الجرد القديم</h4><a class="btn btn-outline-secondary" href="{{ url_for('products') }}">المنتجات</a></div>
+<div class="card mb-3"><div class="card-body">
+<p class="text-muted">ارفع ملف CSV محفوظ بترميز UTF-8. الأعمدة المطلوبة: <code>barcode,name,quantity</code>. الأعمدة الاختيارية: <code>purchase_price,sale_price,size,length,color</code>.</p>
+<form method="post" enctype="multipart/form-data">
+<label class="form-label">المخزن</label><select name="warehouse_id" class="form-select mb-3" required>{% for w in warehouses %}<option value="{{w.id}}">{{w.name}}</option>{% endfor %}</select>
+<label class="form-label">ملف CSV</label><input type="file" name="file" accept=".csv,text/csv" class="form-control mb-3">
+<label class="form-label">أو الصق البيانات هنا</label>
+<textarea name="csv_text" rows="10" class="form-control mb-3" placeholder="barcode,name,quantity,purchase_price,sale_price,size,length,color&#10;123456,قميص,20,25,40,L,120 سم,أسود"></textarea>
+<div class="form-check mb-3">
+  <input class="form-check-input" type="checkbox" name="affect_stock" id="affect_stock">
+  <label class="form-check-label" for="affect_stock">
+    تحديث كمية المخزون الفعلية في المخزن المحدد (اتركه غير مفعّل إذا كان هذا جردًا قديمًا لأرشفة بيانات المنتجات فقط دون التأثير على المخزون الحالي)
+  </label>
+</div>
+<div class="d-flex gap-2 flex-wrap mb-3"><a class="btn btn-outline-success" href="{{ url_for('old_sales_import') }}"><i class="bi bi-receipt"></i> إدخال فاتورة بيع قديمة</a></div>
+<button class="btn btn-primary"><i class="bi bi-upload"></i> استيراد الجرد</button>
+</form></div></div>
+<div class="alert alert-warning"><strong>تنبيه:</strong> إذا فعّلت خيار "تحديث كمية المخزون الفعلية"، سيتم ضبط كمية المخزون في المخزن المختار إلى الكمية الموجودة في الملف. أما إذا تركته غير مفعّل، فسيتم استيراد بيانات المنتجات (الاسم، الباركود، الأسعار...) فقط دون أي تغيير في كمية المخزون الحالية. الاستيراد لا يحذف المنتجات أو الفواتير السابقة في الحالتين.</div>
+{% endblock %}

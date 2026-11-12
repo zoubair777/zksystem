@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}إرجاع للمورد - {{ purchase.purchase_number }}{% endblock %}
+{% block content %}
+{% set cur = purchase.currency_code or 'LYD' %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h4 class="mb-0"><i class="bi bi-box-arrow-up"></i> إرجاع بضاعة للمورد - فاتورة {{ purchase.purchase_number }}</h4>
+    <a href="{{ url_for('purchases') }}" class="btn btn-outline-secondary btn-sm">رجوع للمشتريات</a>
+</div>
+<p class="text-muted small">المورد: <strong>{{ purchase.supplier.name if purchase.supplier else 'بدون مورد' }}</strong> |
+    المخزن: {{ purchase.warehouse.name }} | التاريخ: {{ (purchase.date|local).strftime('%Y-%m-%d') }} |
+    الإجمالي: {{ "{:,.2f}".format(purchase.total or 0) }} {{ cur }}{% if cur != 'LYD' %} (السعر {{ "%g"|format(purchase.exchange_rate or 1) }}){% endif %}</p>
+
+<div class="card mb-3">
+    <div class="card-header">الأصناف التي ترجعها للمورد</div>
+    <form method="POST" onsubmit="return confirm('تأكيد الإرجاع للمورد؟ ستخرج البضاعة من المخزون ويُخصم ثمنها من حسابه.')">
+    <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>الصنف</th><th class="text-end">سعر الشراء ({{ cur }})</th><th class="text-end">المشتراة</th><th class="text-end">أُرجع سابقًا</th><th class="text-end">موجود في المخزن</th><th style="width:120px">ترجع الآن</th></tr></thead>
+        <tbody>
+        {% for it in purchase.items %}
+            {% set can = [it.returnable_quantity(), stocks.get(it.id, 0)]|min %}
+            <tr>
+                <td>{{ it.product.name if it.product else it.product_id }}{{ it.product|bc if it.product }}</td>
+                <td class="text-end">{{ "%.2f"|format(it.unit_cost or 0) }}</td>
+                <td class="text-end">{{ it.quantity }}</td>
+                <td class="text-end">{{ it.returned_quantity() }}</td>
+                <td class="text-end">{{ stocks.get(it.id, 0) }}</td>
+                <td>{% if can > 0 %}<input type="number" name="qty_{{ it.id }}" class="form-control form-control-sm ret-qty" min="0" max="{{ can }}" value="0" data-price="{{ it.unit_cost or 0 }}">
+                    {% else %}<span class="text-muted small">لا شيء للإرجاع</span>{% endif %}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <div class="card-body border-top">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-6"><label class="form-label">سبب الإرجاع</label><input type="text" name="reason" class="form-control" placeholder="عيب، مقاسات غلط..."></div>
+            <div class="col-md-3"><div class="small text-muted">قيمة الإرجاع</div><div class="fs-5 fw-bold"><span id="retTotal">0.00</span> {{ cur }}</div></div>
+            <div class="col-md-3"><button class="btn btn-primary w-100"><i class="bi bi-check2-circle"></i> تنفيذ الإرجاع</button></div>
+        </div>
+        <div class="form-text">ثمن المُرجَع يُخصم من حساب المورد. لو رجّعلك فلوس نقدًا بدل الخصم، سجّلها بعدها من الحسابات.</div>
+    </div>
+    </form>
+</div>
+
+{% if purchase.returns %}
+<div class="card">
+    <div class="card-header">إرجاعات سابقة على هذه الفاتورة</div>
+    <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>الرقم</th><th>التاريخ</th><th>الأصناف</th><th class="text-end">القيمة ({{ cur }})</th><th>السبب</th><th></th></tr></thead>
+        <tbody>
+        {% for r in purchase.returns %}
+            <tr><td>{{ r.return_number }}</td><td>{{ (r.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td class="small">{% for ri in r.items %}{{ ri.product.display_name() if ri.product else ri.product_id }} ×{{ ri.quantity }}{{ '، ' if not loop.last }}{% endfor %}</td>
+                <td class="text-end fw-bold">{{ "{:,.2f}".format(r.total or 0) }}</td><td class="small">{{ r.reason or '' }}</td>
+                <td><form method="POST" action="{{ url_for('delete_purchase_return', rid=r.id) }}" onsubmit="return confirm('حذف الإرجاع؟ ترجع البضاعة للمخزون والمبلغ لحساب المورد.')"><button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></form></td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('.ret-qty').forEach(function (i) {
+    i.addEventListener('input', function () {
+        var t = 0;
+        document.querySelectorAll('.ret-qty').forEach(function (x) { t += (parseInt(x.value) || 0) * parseFloat(x.dataset.price); });
+        document.getElementById('retTotal').textContent = t.toFixed(2);
+    });
+});
+</script>
+{% endblock %}

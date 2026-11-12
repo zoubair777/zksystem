@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Z.G ERP - ربط Google Drive</title>
+<link href="{{ url_for('static', filename='vendor/cairo/cairo.css') }}" rel="stylesheet">
+<style>
+    body { font-family: 'Cairo', sans-serif; background: #f4f6f8; margin: 0; display: flex; min-height: 100vh;
+           align-items: center; justify-content: center; padding: 16px; }
+    .box { background: #fff; border-radius: 14px; padding: 32px; max-width: 520px; text-align: center;
+           box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    .icon { font-size: 56px; }
+    h1 { font-size: 1.4rem; margin: 8px 0; }
+    p { color: #555; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="box">
+    {% if ok %}
+    <div class="icon">✅</div>
+    <h1>تم ربط Google Drive بنجاح</h1>
+    <p>{% if message %}الحساب: <b dir="ltr">{{ message }}</b><br>{% endif %}
+       أول نسخة احتياطية تُرفع خلال دقائق إلى مجلد <b>ZG_ERP_Backups</b>.<br>
+       يمكنك إغلاق هذه الصفحة والرجوع إلى البرنامج.</p>
+    {% else %}
+    <div class="icon">⚠️</div>
+    <h1>لم يكتمل الربط</h1>
+    <p>{{ message }}</p>
+    {% endif %}
+</div>
+</body>
+</html>

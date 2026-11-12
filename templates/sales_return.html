@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}إرجاع فاتورة {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<h4 class="mb-3">إرجاع (كلي/جزئي) - فاتورة {{ invoice.invoice_number }}</h4>
+<p class="text-muted small">
+    حدد الكمية المُرجَعة من كل صنف (صفر = ما يُرجَع). الكمية ترجع للمخزون الذي خرجت منه تلقائيًا،
+    والفلوس تُسترجع فعليًا حسب الطريقة التي تختارها أسفل الجدول.
+</p>
+<form method="POST">
+    <table class="table">
+        <thead><tr><th>الصنف</th><th>الكمية الأصلية</th><th>مُرجَع سابقًا</th><th>سعر الوحدة</th><th>الكمية المُرجَعة الآن</th></tr></thead>
+        <tbody>
+        {% for item in invoice.items %}
+            <tr>
+                <td>{{ item.product.name }}<div class="small text-muted font-monospace" dir="ltr" style="text-align:right">{{ item.product.barcode or '' }}</div></td>
+                <td>{{ item.quantity }}</td>
+                <td>{{ item.returned_quantity() }}</td>
+                <td>{{ "%.2f"|format(item.unit_price) }}</td>
+                <td style="max-width:120px">
+                    {% if item.returnable_quantity() > 0 %}
+                    <input type="number" name="qty_{{ item.id }}" class="form-control" min="0" max="{{ item.returnable_quantity() }}" value="0">
+                    <div class="form-text">أقصى قابل للإرجاع: {{ item.returnable_quantity() }}</div>
+                    {% else %}
+                    <span class="text-muted">أُرجع بالكامل</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="card">
+        <div class="card-header">طريقة استرجاع الفلوس</div>
+        <div class="card-body row g-3">
+            <div class="col-md-4">
+                <label class="form-label">الطريقة</label>
+                <select name="refund_method" id="refundMethod" class="form-select" required>
+                    <option value="cash">نقدًا (من خزينة)</option>
+                    <option value="bank">تحويل بنكي</option>
+                    {% if invoice.customer_id %}
+                    <option value="customer_credit">خصم من دين العميل (بدون فلوس فعلية)</option>
+                    {% endif %}
+                </select>
+            </div>
+            <div class="col-md-4" id="cashboxField">
+                <label class="form-label">الخزينة (للنقد فقط)</label>
+                <select name="cashbox_id" class="form-select">
+                    <option value="">-- بدون ربط بخزينة --</option>
+                    {% for box in cashboxes %}<option value="{{ box.id }}">{{ box.name }} (الرصيد: {{ "%.2f"|format(box.balance) }})</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">سبب الإرجاع</label>
+                <input type="text" name="reason" class="form-control" placeholder="مقاس غير مناسب، عيب...">
+            </div>
+        </div>
+    </div>
+    <button class="btn btn-primary mt-3"><i class="bi bi-arrow-return-left"></i> تنفيذ الإرجاع</button>
+    <a href="{{ url_for('sales') }}" class="btn btn-outline-secondary mt-3">إلغاء</a>
+</form>
+{% endblock %}
+{% block extra_js %}
+<script>
+function syncRefundFields() {
+    document.getElementById('cashboxField').style.display =
+        document.getElementById('refundMethod').value === 'customer_credit' ? 'none' : 'block';
+}
+document.getElementById('refundMethod').addEventListener('change', syncRefundFields);
+syncRefundFields();
+</script>
+{% endblock %}

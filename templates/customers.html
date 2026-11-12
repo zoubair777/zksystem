@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}العملاء{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>العملاء</h4>
+    {% if current_user.is_manager_or_admin() %}
+    <a href="{{ url_for('add_customer') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> إضافة عميل</a>
+    {% endif %}
+</div>
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-center">
+            <div class="col-auto flex-grow-1">
+                <input type="text" name="q" value="{{ search or '' }}" class="form-control" placeholder="بحث باسم العميل...">
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-outline-primary"><i class="bi bi-search"></i> بحث</button>
+                {% if search %}<a href="{{ url_for('customers') }}" class="btn btn-outline-secondary">إلغاء</a>{% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+<div class="card">
+    <table class="table table-hover mb-0">
+        <thead><tr><th>الاسم</th><th>الهاتف</th><th>الرصيد (دين)</th><th>سقف الائتمان</th><th>المتاح</th><th></th></tr></thead>
+        <tbody>
+        {% for c in customers %}
+            <tr>
+                <td>{{ c.name }}</td><td>{{ c.phone or '-' }}</td>
+                <td class="{{ 'text-danger fw-bold' if c.balance > 0 }}">{{ "%.2f"|format(c.balance) }}</td>
+                <td>{{ "%.2f"|format(c.credit_limit) if c.credit_limit else 'بدون حد' }}</td>
+                <td>
+                    {% if c.credit_limit %}
+                        <span class="badge {{ 'bg-danger' if c.available_credit() is not none and c.available_credit() < 0 else ('bg-warning text-dark' if c.available_credit() is not none and c.available_credit() < c.credit_limit*0.2 else 'bg-success') }}">
+                            {{ "%.2f"|format(c.available_credit()) }}
+                        </span>
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if current_user.is_manager_or_admin() %}
+                    <a href="{{ url_for('customer_statement', cid=c.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-journal-text"></i> كشف حساب</a>
+                    <a href="{{ url_for('edit_customer', cid=c.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                    <a href="{{ url_for('delete_customer', cid=c.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('حذف العميل؟')"><i class="bi bi-trash"></i></a>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">
+                {% if search %}لا يوجد عملاء مطابقون لـ "{{ search }}"{% else %}لا يوجد عملاء{% endif %}
+            </td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

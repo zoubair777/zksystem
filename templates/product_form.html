@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ 'تعديل منتج' if product else 'إضافة منتج' }}{% endblock %}
+{% block content %}
+<h4 class="mb-3">{{ 'تعديل منتج' if product else 'إضافة منتج جديد' }}</h4>
+<div class="card">
+    <div class="card-body">
+        <form method="POST">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">اسم المنتج</label>
+                    <input type="text" name="name" class="form-control" required value="{{ product.name if product else '' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">الباركود</label>
+                    <div class="input-group">
+                        <input type="text" name="barcode" id="barcodeInput" class="form-control" placeholder="امسح الباركود أو اتركه فارغًا للتوليد التلقائي" value="{{ product.barcode if product else '' }}">
+                        <button type="button" class="btn btn-outline-secondary" onclick="document.getElementById('barcodeInput').value=Date.now().toString()"><i class="bi bi-upc"></i> توليد</button>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">التصنيف</label>
+                    <select name="category_id" class="form-select">
+                        <option value="">بدون تصنيف</option>
+                        {% for c in categories %}
+                        <option value="{{ c.id }}" {{ 'selected' if product and product.category_id==c.id }}>{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">المقاس</label>
+                    <input type="text" name="size" class="form-control" placeholder="S, M, L, XL" value="{{ product.size if product else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الطول</label>
+                    <input type="text" name="length" class="form-control" placeholder="مثال: 120 سم" value="{{ product.length if product else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">اللون</label>
+                    <input type="text" name="color" class="form-control" value="{{ product.color if product else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">وحدة القياس</label>
+                    <input type="text" name="unit" class="form-control" value="{{ product.unit if product else 'قطعة' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">سعر الشراء (د.ل)</label>
+                    <input type="number" step="0.01" name="purchase_price" class="form-control" value="{{ product.purchase_price if product else 0 }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">سعر البيع (د.ل)</label>
+                    <input type="number" step="0.01" name="sale_price" class="form-control" required value="{{ product.sale_price if product else 0 }}">
+                </div>
+            </div>
+
+            {% if not product %}
+            <hr class="my-4">
+            <h6>الرصيد الافتتاحي لكل مخزن</h6>
+            <div class="row g-3">
+                {% for w in warehouses %}
+                <div class="col-md-4">
+                    <label class="form-label">{{ w.name }}</label>
+                    <input type="number" name="qty_{{ w.id }}" class="form-control" value="0">
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="mt-4">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+                <a href="{{ url_for('products') }}" class="btn btn-outline-secondary">إلغاء</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

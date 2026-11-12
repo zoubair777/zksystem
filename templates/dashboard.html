@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}لوحة التحكم{% endblock %}
+{% block content %}
+<h4 class="mb-4">لوحة التحكم</h4>
+
+{% if not active_shift %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-exclamation-triangle"></i> لا توجد وردية مفتوحة حاليًا.</span>
+    <a href="{{ url_for('open_shift') }}" class="btn btn-sm btn-warning">فتح وردية جديدة</a>
+</div>
+{% endif %}
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <a href="{{ url_for('pos') }}" class="btn btn-primary"><i class="bi bi-upc-scan"></i> بيع جديد</a>
+    <a href="{{ url_for('sales') }}" class="btn btn-outline-warning"><i class="bi bi-arrow-repeat"></i> استبدال / إرجاع</a>
+    <a href="{{ url_for('inventory_overview') }}" class="btn btn-outline-primary"><i class="bi bi-boxes"></i> المخزون الحالي</a>
+    <a href="{{ url_for('inventory_overview', view='low') }}" class="btn btn-outline-danger"><i class="bi bi-exclamation-triangle"></i> منخفض المخزون</a>
+    {% if active_shift %}
+    <a href="{{ url_for('shift_report_print', sid=active_shift.id) }}" class="btn btn-outline-dark"><i class="bi bi-printer"></i> تقرير ورديتي الحالية</a>
+    {% endif %}
+    <a href="{{ url_for('shifts') }}" class="btn btn-outline-secondary"><i class="bi bi-clock-history"></i> تقارير الورديات</a>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-{{ '3' if current_user.is_manager_or_admin() else '6' }}">
+        <div class="stat-card bg-primary-soft">
+            <i class="bi bi-cash-stack"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_today) }}</span><span class="stat-label">مبيعات اليوم (د.ل)</span></div>
+        </div>
+    </div>
+    <div class="col-md-{{ '3' if current_user.is_manager_or_admin() else '6' }}">
+        <div class="stat-card bg-success-soft">
+            <i class="bi bi-receipt"></i>
+            <div><span class="stat-num">{{ sales_count }}</span><span class="stat-label">عدد فواتير اليوم</span></div>
+        </div>
+    </div>
+    {% if current_user.is_manager_or_admin() %}
+    <div class="col-md-3">
+        <div class="stat-card bg-info-soft">
+            <i class="bi bi-box-seam"></i>
+            <div><span class="stat-num">{{ total_products }}</span><span class="stat-label">إجمالي المنتجات</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-danger-soft">
+            <i class="bi bi-exclamation-triangle"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_customers_debt) }}</span><span class="stat-label">إجمالي ديون العملاء</span></div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% if current_user.is_manager_or_admin() %}
+{% if pending_approvals %}
+<div class="alert alert-info d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-check2-square"></i> يوجد {{ pending_approvals }} طلب/طلبات موافقة معلّقة (إلغاء فواتير).</span>
+    <a href="{{ url_for('approvals') }}" class="btn btn-sm btn-info">مراجعة الطلبات</a>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-exclamation-circle text-danger"></i> منتجات على وشك النفاد</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead><tr><th>المنتج</th><th>الباركود</th><th>المتبقي</th></tr></thead>
+                    <tbody>
+                    {% for p in low_stock %}
+                        <tr><td>{{ p.name }}</td><td>{{ p.barcode }}</td><td class="text-danger fw-bold">{{ p.total_quantity() }}</td></tr>
+                    {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">لا توجد منتجات منخفضة المخزون</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-people-fill text-danger"></i> أكبر العملاء دَيْنًا</div>
+            <div class="card-body p-0">
+                <table class="table mb-0">
+                    <thead><tr><th>العميل</th><th>الدين</th><th>سقف الائتمان</th></tr></thead>
+                    <tbody>
+                    {% for c in top_debtors %}
+                        <tr>
+                            <td><a href="{{ url_for('customer_statement', cid=c.id) }}">{{ c.name }}</a></td>
+                            <td class="text-danger fw-bold">{{ "%.2f"|format(c.balance) }}</td>
+                            <td>{{ "%.2f"|format(c.credit_limit) if c.credit_limit else "بدون حد" }}</td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">لا توجد ديون مسجلة</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center text-muted py-4">
+        <i class="bi bi-info-circle fs-3"></i>
+        <p class="mt-2">مرحبًا {{ current_user.full_name }}، يمكنك الوصول إلى نقطة البيع وفواتيرك وورديتك من القائمة الجانبية.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

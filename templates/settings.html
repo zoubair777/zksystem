@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}إعدادات النظام{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-gear me-2"></i>إعدادات النظام</h4>
+
+<form method="post">
+<div class="row g-4">
+
+  <!-- ═══════════════════════════════════
+       بطاقة: إعدادات الفاتورة
+  ═══════════════════════════════════ -->
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-receipt me-1"></i>إعدادات الفاتورة
+      </div>
+      <div class="card-body d-flex flex-column gap-3">
+
+        <!-- اسم المتجر/المول -->
+        <div>
+          <label class="form-label fw-semibold">
+            <i class="bi bi-shop me-1"></i>اسم المتجر / المول
+            <small class="text-muted fw-normal">(يظهر في رأس الفاتورة)</small>
+          </label>
+          <input type="text" name="company_name" class="form-control"
+                 value="{{ s.company_name }}" placeholder="مثال: Z.G للألبسة">
+        </div>
+
+        <!-- سطر فرعي تحت الاسم -->
+        <div>
+          <label class="form-label fw-semibold">
+            <i class="bi bi-type me-1"></i>السطر الفرعي تحت اسم المتجر
+            <small class="text-muted fw-normal">(اختياري — مثل: العنوان أو رقم الهاتف)</small>
+          </label>
+          <input type="text" name="company_subtitle" class="form-control"
+                 value="{{ s.company_subtitle }}" placeholder="مثال: طرابلس — 0912345678">
+        </div>
+
+        <!-- ملاحظة في رأس الفاتورة -->
+        <div>
+          <label class="form-label fw-semibold">
+            <i class="bi bi-card-heading me-1"></i>ملاحظة في رأس الفاتورة
+            <small class="text-muted fw-normal">(تظهر أسفل اسم المتجر مباشرة)</small>
+          </label>
+          <input type="text" name="invoice_header_note" class="form-control"
+                 value="{{ s.invoice_header_note }}" placeholder="مثال: مرحباً بكم — المبيعات نهائية">
+        </div>
+
+        <!-- نص أسفل الفاتورة -->
+        <div>
+          <label class="form-label fw-semibold">
+            <i class="bi bi-chat-left-text me-1"></i>نص ختامي أسفل الفاتورة
+            <small class="text-muted fw-normal">(رسالة شكر أو شروط البيع)</small>
+          </label>
+          <textarea name="invoice_footer" class="form-control" rows="3"
+                    placeholder="مثال: شكرًا لتعاملكم معنا — لا يُقبل الإرجاع بعد 24 ساعة">{{ s.invoice_footer }}</textarea>
+        </div>
+
+        <!-- عملة -->
+        <div>
+          <label class="form-label fw-semibold">
+            <i class="bi bi-currency-exchange me-1"></i>رمز العملة
+          </label>
+          <input type="text" name="currency" class="form-control" style="max-width:120px;"
+                 value="{{ s.currency }}" placeholder="د.ل">
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       بطاقة: معاينة الفاتورة
+  ═══════════════════════════════════ -->
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-eye me-1"></i>معاينة رأس الفاتورة
+      </div>
+      <div class="card-body">
+        <div id="preview" class="border rounded p-3 text-center"
+             style="font-family:'Cairo',sans-serif; background:#fff; min-height:160px;">
+          <div id="prev-name" class="fw-bold fs-5">{{ s.company_name or 'اسم المتجر' }}</div>
+          <div id="prev-subtitle" class="text-muted small">{{ s.company_subtitle }}</div>
+          <div id="prev-header-note" class="small mt-1 text-secondary">{{ s.invoice_header_note }}</div>
+          <hr style="border-style:dashed;">
+          <div class="small text-muted">... بنود الفاتورة ...</div>
+          <hr style="border-style:dashed;">
+          <div id="prev-footer" class="small text-muted mt-1">{{ s.invoice_footer or 'شكرًا لتعاملكم معنا' }}</div>
+        </div>
+        <div class="mt-3 small text-muted">
+          <i class="bi bi-info-circle me-1"></i>
+          المعاينة تتحدث تلقائياً أثناء الكتابة.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════
+       بطاقة: إعدادات إضافية
+  ═══════════════════════════════════ -->
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-sliders me-1"></i>إعدادات إضافية
+      </div>
+      <div class="card-body row g-3">
+
+        <!-- رقم الهاتف في الفاتورة -->
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-telephone me-1"></i>رقم الهاتف (للفاتورة)
+          </label>
+          <input type="text" name="company_phone" class="form-control"
+                 value="{{ s.company_phone }}" placeholder="مثال: 0912345678">
+        </div>
+
+        <!-- العنوان في الفاتورة -->
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-geo-alt me-1"></i>العنوان (للفاتورة)
+          </label>
+          <input type="text" name="company_address" class="form-control"
+                 value="{{ s.company_address }}" placeholder="مثال: شارع النصر، طرابلس">
+        </div>
+
+        <!-- حد المخزون المنخفض -->
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">
+            <i class="bi bi-exclamation-triangle me-1"></i>حد تنبيه المخزون المنخفض
+            <small class="text-muted fw-normal">(كمية)</small>
+          </label>
+          <input type="number" name="low_stock_threshold" class="form-control"
+                 value="{{ s.low_stock_threshold }}" min="0" placeholder="10">
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- زر الحفظ -->
+  <div class="col-12 d-flex gap-2">
+    <button type="submit" class="btn btn-primary px-5">
+      <i class="bi bi-floppy me-1"></i>حفظ الإعدادات
+    </button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">إلغاء</a>
+  </div>
+
+</div>
+<hr><h5>التصدير والطباعة</h5>
+<div class="mb-3"><label class="form-label">مسار حفظ ملفات التصدير</label><input type="text" name="export_path" class="form-control" value="{{ s.export_path }}" placeholder="مثال: C:\ERP\exports"><div class="form-text">اتركه افتراضياً للحفظ داخل مجلد المنظومة.</div></div>
+<div class="mb-3"><label class="form-label">العملة المحلية</label><input type="text" name="local_currency" class="form-control" value="{{ s.local_currency }}"></div>
+<div class="mb-3"><label class="form-label">سعر صرف الدولار مقابل الدينار الليبي (1 USD = ? LYD)</label><input type="number" step="0.0001" min="0" name="usd_exchange_rate" class="form-control" value="{{ s.usd_exchange_rate }}"></div>
+<hr>
+<h6>مساعد الذكاء الاصطناعي (اختياري)</h6>
+<p class="small text-muted">يجاوب فقط عن بيانات نظامك وكيفية استخدامه. ضع مفتاح واحد أو الاثنين،
+    واختر أيهما يُستخدم فعليًا من "المزوّد المُستخدم". اترك الكل فارغًا لتعطيل المساعد.</p>
+<div class="mb-3">
+    <label class="form-label">المزوّد المُستخدم</label>
+    <select name="ai_provider" class="form-select" style="max-width:250px">
+        <option value="gemini" {{ 'selected' if s.ai_provider=='gemini' }}>Gemini (Google)</option>
+        <option value="claude" {{ 'selected' if s.ai_provider=='claude' }}>Claude (Anthropic)</option>
+    </select>
+</div>
+<div class="mb-3"><label class="form-label">مفتاح Gemini API</label><input type="text" name="gemini_api_key" class="form-control" value="{{ s.gemini_api_key }}" placeholder="AIza..." autocomplete="off">
+    <div class="form-text">مجاني (حصة سخية) من <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> بنفس حساب Google تبعك.</div>
+</div>
+<div class="mb-3"><label class="form-label">مفتاح Claude (Anthropic) API</label><input type="text" name="claude_api_key" class="form-control" value="{{ s.claude_api_key }}" placeholder="sk-ant-..." autocomplete="off">
+    <div class="form-text">بدون حصة مجانية، لكن رخيص جدًا للسؤال الواحد. من <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</div>
+</div>
+</form>
+
+<script>
+  // معاينة حية أثناء الكتابة
+  function bind(inputName, previewId) {
+    const el = document.querySelector('[name="' + inputName + '"]');
+    const pv = document.getElementById(previewId);
+    if (!el || !pv) return;
+    el.addEventListener('input', () => { pv.textContent = el.value || el.placeholder; });
+  }
+  bind('company_name',       'prev-name');
+  bind('company_subtitle',   'prev-subtitle');
+  bind('invoice_header_note','prev-header-note');
+  bind('invoice_footer',     'prev-footer');
+</script>
+{% endblock %}

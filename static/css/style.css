@@ -1,0 +1,171 @@
+:root {
+    --primary: #2f6b4f;
+    --primary-dark: #204a37;
+    --sidebar-width: 250px;
+}
+
+* { font-family: 'Cairo', sans-serif; }
+
+body {
+    background: #f4f6f8;
+    margin: 0;
+}
+
+/* ----- Layout ----- */
+.app-wrapper {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: var(--sidebar-width);
+    background: linear-gradient(180deg, var(--primary-dark), var(--primary));
+    color: #fff;
+    padding: 20px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 20px 20px 20px;
+    font-size: 1.2rem;
+    font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.15);
+    margin-bottom: 10px;
+}
+
+.sidebar .nav { padding: 0 10px; }
+.sidebar .nav li { list-style: none; }
+.sidebar .nav li.nav-section-title {
+    font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+    opacity: .55; margin: 14px 8px 4px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08);
+}
+.sidebar .nav li:first-child.nav-section-title { border-top: none; margin-top: 4px; }
+.sidebar .nav a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 15px;
+    color: rgba(255,255,255,0.85);
+    text-decoration: none;
+    border-radius: 8px;
+    margin-bottom: 3px;
+    transition: 0.2s;
+}
+.sidebar .nav a:hover, .sidebar .nav a.active {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+}
+
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.topbar {
+    background: #fff;
+    padding: 12px 25px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #e5e7eb;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.content-body { padding: 25px; }
+
+/* ----- Cards ----- */
+.card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    margin-bottom: 15px;
+}
+.card-header {
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+    border-radius: 12px 12px 0 0 !important;
+}
+
+/* ----- Stat cards ----- */
+.stat-card {
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.stat-card i { font-size: 2rem; }
+.stat-num { display: block; font-size: 1.5rem; font-weight: 700; }
+.stat-label { display: block; font-size: 0.85rem; color: #666; }
+
+.bg-primary-soft { background: #e7f0ec; color: var(--primary-dark); }
+.bg-success-soft { background: #e6f6ea; color: #1e7e34; }
+.bg-info-soft { background: #e6f3fb; color: #0c6a94; }
+.bg-danger-soft { background: #fdeaea; color: #c0392b; }
+.bg-warning-soft { background: #fff8e1; color: #b8860b; }
+.bg-secondary-soft { background: #eef0f2; color: #495057; }
+
+@media print {
+    .no-print { display: none !important; }
+    /* طباعة أي صفحة: بدون القائمة الجانبية والشريط العلوي والأزرار العائمة */
+    .sidebar, .topbar, #aiAssistantToggle, #aiAssistantPanel { display: none !important; }
+    .main-content { margin: 0 !important; width: 100% !important; }
+    body { background: #fff; }
+}
+
+/* ----- Login ----- */
+.login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+}
+.login-card {
+    background: #fff;
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    width: 100%;
+    max-width: 420px;
+}
+
+/* ----- Buttons ----- */
+.btn-primary { background: var(--primary); border-color: var(--primary); }
+.btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+
+/* ----- Responsive ----- */
+@media (max-width: 992px) {
+    .sidebar { position: fixed; right: 0; z-index: 1000; transform: translateX(100%); transition: 0.3s; }
+    .sidebar.show { transform: translateX(0); }
+}
+
+#cartTable tbody tr td { vertical-align: middle; }
+
+/* ----- Z.G ERP: شاشة البيع ----- */
+.pos-total-box {
+    background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+    color: #fff;
+    text-align: center;
+    padding: 14px 10px;
+    border-radius: 0.375rem 0.375rem 0 0;
+}
+.pos-total-num { font-size: 2.6rem; font-weight: 700; line-height: 1.2; }
+.pos-total-num small { font-size: 1rem; font-weight: 400; }
+.pos-shortcuts kbd { background: #e9ecef; color: #333; font-size: 0.75rem; padding: 1px 5px; }
+#cartTable td { vertical-align: middle; }
+
+/* أزرار أكبر قليلًا لسهولة اللمس على شاشات المحل */
+.table .btn-sm { min-width: 32px; }
+.alert { border-radius: 10px; }

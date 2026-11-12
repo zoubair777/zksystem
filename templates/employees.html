@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}الموظفون{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">الموظفون وسلفهم</h4>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-12">
+        <div class="stat-card bg-danger-soft"><i class="bi bi-cash-coin"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_outstanding) }}</span><span class="stat-label">إجمالي السلف غير المسدَّدة على كل الموظفين ({{ currency }})</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">إضافة موظف</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('add_employee') }}" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">الاسم</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">الهاتف</label>
+                <input type="text" name="phone" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">الوظيفة</label>
+                <input type="text" name="position" class="form-control" placeholder="كاشير، بائع...">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">الراتب الأساسي ({{ currency }})</label>
+                <input type="number" step="0.01" min="0" name="salary" class="form-control">
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+                <button class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">قائمة الموظفين</div>
+    <table class="table table-hover mb-0">
+        <thead><tr><th>الاسم</th><th>الهاتف</th><th>الوظيفة</th><th>الراتب الأساسي</th><th>السلفة الحالية</th><th></th></tr></thead>
+        <tbody>
+        {% for emp in employees %}
+            <tr>
+                <td>{{ emp.name }}</td><td>{{ emp.phone or '-' }}</td><td>{{ emp.position or '-' }}</td>
+                <td>{{ "%.2f"|format(emp.salary) if emp.salary else '-' }}</td>
+                <td class="{{ 'text-danger fw-bold' if emp.balance > 0 }}">{{ "%.2f"|format(emp.balance) }}</td>
+                <td class="text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#paySalary{{ emp.id }}" title="صرف راتب"><i class="bi bi-cash-stack"></i> راتب</button>
+                    <a href="{{ url_for('accounts') }}?entry_type=employee_advance&employee_id={{ emp.id }}" class="btn btn-sm btn-outline-danger" title="تسجيل سلفة جديدة"><i class="bi bi-cash-coin"></i></a>
+                    {% if current_user.has_permission('employee_draw') %}
+                    <a href="{{ url_for('accounts') }}?entry_type=employee_draw&employee_id={{ emp.id }}" class="btn btn-sm btn-outline-warning" title="سحب على الحساب (بدون سقف)"><i class="bi bi-wallet2"></i></a>
+                    {% endif %}
+                    {% if emp.balance > 0 %}
+                    <a href="{{ url_for('accounts') }}?entry_type=employee_repayment&employee_id={{ emp.id }}" class="btn btn-sm btn-outline-success" title="تسديد سلفة"><i class="bi bi-check-circle"></i></a>
+                    {% endif %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editEmp{{ emp.id }}"><i class="bi bi-pencil"></i></button>
+                    <a href="{{ url_for('delete_employee', eid=emp.id) }}" class="btn btn-sm btn-outline-dark" onclick="return confirm('حذف الموظف؟')"><i class="bi bi-trash"></i></a>
+                </td>
+            </tr>
+            <div class="modal fade" id="paySalary{{ emp.id }}" tabindex="-1">
+                <div class="modal-dialog"><div class="modal-content">
+                    <form method="POST" action="{{ url_for('pay_employee_salary', eid=emp.id) }}">
+                        <div class="modal-header"><h6 class="modal-title">صرف راتب {{ emp.name }}</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                        <div class="modal-body">
+                            <label class="form-label">مبلغ الراتب الإجمالي ({{ currency }})</label>
+                            <input type="number" step="0.01" min="0.01" name="gross_amount" class="form-control mb-2" value="{{ emp.salary or 0 }}" required>
+                            <label class="form-label">خصم من السلفة القائمة (الحالية: {{ "%.2f"|format(emp.balance) }} {{ currency }})</label>
+                            <input type="number" step="0.01" min="0" max="{{ emp.balance }}" name="deduct_advance" class="form-control mb-2" value="{{ [emp.balance, emp.salary or 0]|min }}">
+                            <div class="form-text mb-2">الصافي الذي سيُصرف فعليًا = مبلغ الراتب − مبلغ الخصم. سجّل الراتب الإجمالي بالكامل كمصروف تشغيلي، وسيُنشأ تلقائيًا قيد "تسديد سلفة" منفصل بمبلغ الخصم لتصفير سلفته تدريجيًا.</div>
+                            <label class="form-label">طريقة الدفع (للصافي المدفوع)</label>
+                            <select name="payment_method" class="form-select mb-2">
+                                <option value="cash">نقدي</option>
+                                <option value="bank">بنكي</option>
+                            </select>
+                            <label class="form-label">الخزينة (إن كان الدفع نقدًا - يُخصم الصافي المدفوع من رصيدها فورًا)</label>
+                            <select name="cashbox_id" class="form-select mb-2">
+                                <option value="">-- بدون ربط بخزينة --</option>
+                                {% for box in cashboxes %}<option value="{{ box.id }}">{{ box.name }} (الرصيد: {{ "%.2f"|format(box.balance) }})</option>{% endfor %}
+                            </select>
+                            <label class="form-label">ملاحظة</label>
+                            <input type="text" name="note" class="form-control" placeholder="راتب شهر ...">
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                            <button class="btn btn-primary"><i class="bi bi-save"></i> صرف الراتب</button>
+                        </div>
+                    </form>
+                </div></div>
+            </div>
+            <div class="modal fade" id="editEmp{{ emp.id }}" tabindex="-1">
+                <div class="modal-dialog"><div class="modal-content">
+                    <form method="POST" action="{{ url_for('edit_employee', eid=emp.id) }}">
+                        <div class="modal-header"><h6 class="modal-title">تعديل بيانات {{ emp.name }}</h6></div>
+                        <div class="modal-body">
+                            <label class="form-label">الاسم</label>
+                            <input type="text" name="name" class="form-control mb-2" value="{{ emp.name }}" required>
+                            <label class="form-label">الهاتف</label>
+                            <input type="text" name="phone" class="form-control mb-2" value="{{ emp.phone or '' }}">
+                            <label class="form-label">الوظيفة</label>
+                            <input type="text" name="position" class="form-control mb-2" value="{{ emp.position or '' }}">
+                            <label class="form-label">الراتب الأساسي</label>
+                            <input type="number" step="0.01" min="0" name="salary" class="form-control" value="{{ emp.salary or 0 }}">
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                            <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+                        </div>
+                    </form>
+                </div></div>
+            </div>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا يوجد موظفون مسجّلون</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h5 class="mb-2">سجل السلف والتسديدات</h5>
+<div class="card">
+    <table class="table mb-0">
+        <thead><tr><th>التاريخ</th><th>الموظف</th><th>النوع</th><th>طريقة الدفع</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+        <tbody>
+        {% for e in entries %}
+            <tr>
+                <td>{{ (e.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ e.employee.name if e.employee else '-' }}</td>
+                <td>
+                    {% if e.entry_type == 'employee_advance' %}<span class="badge bg-danger">سلفة</span>
+                    {% elif e.entry_type == 'salary_payment' %}<span class="badge bg-primary">راتب</span>
+                    {% else %}<span class="badge bg-success">تسديد</span>{% endif %}
+                </td>
+                <td>{% if e.payment_method == 'bank' %}بنكي{% elif e.payment_method == 'cash' %}نقدي{% else %}-{% endif %}</td>
+                <td class="{{ 'text-success' if e.entry_type in ('employee_repayment',) else ('text-primary' if e.entry_type == 'salary_payment' else 'text-danger') }}">{{ "%.2f"|format(e.amount) }}</td>
+                <td>{{ e.note or '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا توجد سلف مسجّلة بعد</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}تفاصيل المنتج - {{ product.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-box-seam"></i> {{ product.name }}
+        <small class="text-muted fs-6">{% if product.barcode %}<code>{{ product.barcode }}</code>{% endif %}
+        {% if product.size %} · {{ product.size }}{% endif %}{% if product.color %} · {{ product.color }}{% endif %}</small></h4>
+    <a href="{{ url_for('barcode_labels', product_id=product.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-upc-scan"></i> طباعة ملصق</a>
+    <a href="{{ url_for('products') }}" class="btn btn-outline-secondary btn-sm">رجوع للمنتجات</a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2">
+        <div class="small text-muted">الكمية الأصلية (قبل البيع)</div><div class="fs-4 fw-bold">{{ original_qty }}</div>
+        {% if purchased %}<div class="small text-muted">مشتريات مسجّلة: {{ purchased }}</div>{% endif %}</div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-success"><div class="card-body py-2">
+        <div class="small text-muted">المباع (صافي بعد المرتجع)</div><div class="fs-4 fw-bold text-success">{{ sold_qty }}</div>
+        {% if returned_qty %}<div class="small text-muted">مرتجع: {{ returned_qty }}</div>{% endif %}</div></div></div>
+    <div class="col-6 col-md-3"><div class="card border-primary"><div class="card-body py-2">
+        <div class="small text-muted">المتبقي حاليًا</div><div class="fs-4 fw-bold {{ 'text-danger' if remaining <= 5 else 'text-primary' }}">{{ remaining }}</div>
+        <div class="small text-muted">{% for n, q in stocks %}{{ n }}: {{ q }}{% if not loop.last %} · {% endif %}{% endfor %}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2">
+        <div class="small text-muted">قيمة المبيعات ({{ currency }})</div><div class="fs-4 fw-bold">{{ "%.2f"|format(sold_value) }}</div>
+        <div class="small text-muted">متوسط سعر البيع: {{ "%.2f"|format(avg_price) }}
+        {% if current_user.is_manager_or_admin() %}<br>الربح التقديري: {{ "%.2f"|format(profit) }}{% endif %}</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-5"><div class="card h-100">
+        <div class="card-header fw-bold"><i class="bi bi-person-badge"></i> من باع هذا المنتج</div>
+        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+            <thead class="table-light"><tr><th>البائع</th><th>الكمية</th><th>القيمة</th><th>فواتير</th></tr></thead>
+            <tbody>{% for u in by_user %}<tr><td>{{ u.name }}</td><td class="fw-bold">{{ u.qty }}</td><td>{{ "%.2f"|format(u.value) }}</td><td>{{ u.invoices }}</td></tr>
+            {% else %}<tr><td colspan="4" class="text-center text-muted py-3">لم يُبَع بعد</td></tr>{% endfor %}</tbody>
+        </table></div></div></div>
+    <div class="col-lg-7"><div class="card h-100">
+        <div class="card-header fw-bold"><i class="bi bi-people"></i> كم اشترى كل زبون من هذا المنتج</div>
+        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
+            <thead class="table-light"><tr><th>الزبون</th><th>الكمية</th><th>القيمة</th><th>فواتير</th><th>آخر شراء</th></tr></thead>
+            <tbody>{% for c in by_customer %}<tr>
+                <td>{% if c.id %}<a href="{{ url_for('customer_statement', cid=c.id) }}">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</td>
+                <td class="fw-bold">{{ c.qty }}</td><td>{{ "%.2f"|format(c.value) }}</td><td>{{ c.invoices }}</td>
+                <td class="small text-nowrap">{{ (c.last|local).strftime('%Y-%m-%d') if c.last else '-' }}</td></tr>
+            {% else %}<tr><td colspan="5" class="text-center text-muted py-3">لا توجد مبيعات</td></tr>{% endfor %}</tbody>
+        </table></div></div></div>
+</div>
+
+<div class="card">
+    <div class="card-header fw-bold"><i class="bi bi-receipt"></i> كل عمليات البيع لهذا المنتج (الفواتير الملغاة مستبعدة)</div>
+    <div class="table-responsive"><table class="table table-sm table-hover mb-0 align-middle">
+        <thead class="table-light"><tr><th>التاريخ</th><th>الفاتورة</th><th>الزبون</th><th>البائع</th><th>الكمية</th><th>مرتجع</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+        <tbody>{% for l in lines %}<tr>
+            <td class="small text-nowrap">{{ (l.invoice.date|local).strftime('%Y-%m-%d %H:%M') if l.invoice.date else '-' }}</td>
+            <td><a href="{{ url_for('invoice_print', iid=l.invoice.id) }}">{{ l.invoice.invoice_number }}</a></td>
+            <td>{{ l.customer }}</td><td>{{ l.seller }}</td>
+            <td class="fw-bold">{{ l.item.quantity }}</td>
+            <td class="{{ 'text-danger' if l.returned }}">{{ l.returned or '-' }}</td>
+            <td>{{ "%.2f"|format(l.item.unit_price) }}</td><td>{{ "%.2f"|format(l.net * l.item.unit_price) }}</td></tr>
+        {% else %}<tr><td colspan="8" class="text-center text-muted py-3">لا توجد مبيعات لهذا المنتج</td></tr>{% endfor %}</tbody>
+    </table></div>
+</div>
+{% endblock %}

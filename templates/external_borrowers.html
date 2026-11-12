@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}سلف وقروض - أشخاص وجهات من خارج النظام{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">سلف وقروض - أشخاص وجهات من خارج النظام</h4>
+</div>
+<p class="text-muted small">
+    لأي شخص أو جهة (بنك، قريب، صديق، شريك غير رسمي...) ليسوا موظفين ولا عملاء ولا موردين -
+    سواء كان المحل هو اللي أعطاهم سلفة (يصيرون مدينين للمحل)، أو كان المحل هو اللي أخذ قرضًا/سلفة
+    منهم (يصير المحل مدينًا لهم). كل شخص له رصيد واحد يعكس الاتجاهين معًا.
+</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="stat-card bg-danger-soft"><i class="bi bi-cash-coin"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_owed_to_us) }}</span><span class="stat-label">مستحق لنا (سلف أعطيناها، {{ currency }})</span></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="stat-card bg-warning-soft"><i class="bi bi-bank"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_we_owe) }}</span><span class="stat-label">مستحق علينا (قروض أخذناها، {{ currency }})</span></div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">إضافة شخص أو جهة (بنك مثلاً)</div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('add_external_borrower') }}" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">الاسم (اسم البنك أو الشخص)</label>
+                <input type="text" name="name" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">الهاتف</label>
+                <input type="text" name="phone" class="form-control">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">ملاحظة (صلته بالمحل مثلاً)</label>
+                <input type="text" name="note" class="form-control">
+            </div>
+            <div class="col-md-1 d-flex align-items-end">
+                <button class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">قائمة الأشخاص والجهات</div>
+    <table class="table table-hover mb-0">
+        <thead><tr><th>الاسم</th><th>الهاتف</th><th>ملاحظة</th><th>الرصيد</th><th></th></tr></thead>
+        <tbody>
+        {% for b in borrowers %}
+            <tr>
+                <td>{{ b.name }}</td><td>{{ b.phone or '-' }}</td><td>{{ b.note or '-' }}</td>
+                <td>
+                    {% if b.balance > 0 %}<span class="text-danger fw-bold">{{ "%.2f"|format(b.balance) }} (له عندنا)</span>
+                    {% elif b.balance < 0 %}<span class="text-warning fw-bold">{{ "%.2f"|format(-b.balance) }} (علينا له)</span>
+                    {% else %}0.00{% endif %}
+                </td>
+                <td class="text-nowrap">
+                    <a href="{{ url_for('accounts') }}?entry_type=external_advance&external_borrower_id={{ b.id }}" class="btn btn-sm btn-outline-danger" title="إعطاؤه سلفة جديدة"><i class="bi bi-cash-coin"></i></a>
+                    {% if b.balance > 0 %}
+                    <a href="{{ url_for('accounts') }}?entry_type=external_repayment&external_borrower_id={{ b.id }}" class="btn btn-sm btn-outline-success" title="تسديد سلفته"><i class="bi bi-check-circle"></i></a>
+                    {% endif %}
+                    <a href="{{ url_for('accounts') }}?entry_type=loan_received&external_borrower_id={{ b.id }}" class="btn btn-sm btn-outline-warning" title="المحل يأخذ قرض/سلفة منه"><i class="bi bi-bank"></i></a>
+                    {% if b.balance < 0 %}
+                    <a href="{{ url_for('accounts') }}?entry_type=loan_repayment&external_borrower_id={{ b.id }}" class="btn btn-sm btn-outline-primary" title="تسديد القرض له"><i class="bi bi-arrow-return-left"></i></a>
+                    {% endif %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editBorrower{{ b.id }}"><i class="bi bi-pencil"></i></button>
+                    <a href="{{ url_for('delete_external_borrower', bid=b.id) }}" class="btn btn-sm btn-outline-dark" onclick="return confirm('حذف هذا الشخص؟')"><i class="bi bi-trash"></i></a>
+                </td>
+            </tr>
+            <div class="modal fade" id="editBorrower{{ b.id }}" tabindex="-1">
+                <div class="modal-dialog"><div class="modal-content">
+                    <form method="POST" action="{{ url_for('edit_external_borrower', bid=b.id) }}">
+                        <div class="modal-header"><h6 class="modal-title">تعديل بيانات {{ b.name }}</h6></div>
+                        <div class="modal-body">
+                            <label class="form-label">الاسم</label>
+                            <input type="text" name="name" class="form-control mb-2" value="{{ b.name }}" required>
+                            <label class="form-label">الهاتف</label>
+                            <input type="text" name="phone" class="form-control mb-2" value="{{ b.phone or '' }}">
+                            <label class="form-label">ملاحظة</label>
+                            <input type="text" name="note" class="form-control" value="{{ b.note or '' }}">
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">إلغاء</button>
+                            <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+                        </div>
+                    </form>
+                </div></div>
+            </div>
+        {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">لا يوجد أشخاص مسجّلون</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<h5 class="mb-2">سجل السلف والقروض والتسديدات</h5>
+<div class="card">
+    <table class="table mb-0">
+        <thead><tr><th>التاريخ</th><th>الشخص/الجهة</th><th>النوع</th><th>طريقة الدفع</th><th>المبلغ</th><th>ملاحظة</th></tr></thead>
+        <tbody>
+        {% for e in entries %}
+            <tr>
+                <td>{{ (e.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ e.external_borrower.name if e.external_borrower else '-' }}</td>
+                <td>
+                    {% if e.entry_type == 'external_advance' %}<span class="badge bg-danger">سلفة منّا</span>
+                    {% elif e.entry_type == 'external_repayment' %}<span class="badge bg-success">تسديد له</span>
+                    {% elif e.entry_type == 'loan_received' %}<span class="badge bg-warning text-dark">قرض منه</span>
+                    {% else %}<span class="badge bg-primary">تسديد منّا</span>{% endif %}
+                </td>
+                <td>{% if e.payment_method == 'bank' %}بنكي{% elif e.payment_method == 'cash' %}نقدي{% else %}-{% endif %}</td>
+                <td class="{{ 'text-danger' if e.entry_type in ('external_advance','loan_repayment') else 'text-success' }}">{{ "%.2f"|format(e.amount) }}</td>
+                <td>{{ e.note or '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">لا توجد حركات مسجّلة بعد</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

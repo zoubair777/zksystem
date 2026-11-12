@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}كشف حساب {{ customer.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4 class="mb-0">كشف حساب العميل: {{ customer.name }}</h4>
+    <div>
+        <button onclick="window.print()" class="btn btn-outline-dark btn-sm"><i class="bi bi-printer"></i> طباعة</button>
+        <a href="{{ url_for('export_customer_statement_excel_route', cid=customer.id) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+        <a href="{{ url_for('export_customer_statement_pdf_route', cid=customer.id) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        <a href="{{ url_for('accounts') }}?entry_type=customer_debt&customer_id={{ customer.id }}" class="btn btn-outline-danger btn-sm">
+            <i class="bi bi-plus-lg"></i> إضافة دين بدون فاتورة
+        </a>
+        <a href="{{ url_for('customer_discount', cid=customer.id) }}" class="btn btn-outline-warning btn-sm">
+            <i class="bi bi-percent"></i> خصم من الدين
+        </a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3">
+        <div class="stat-card bg-danger-soft"><i class="bi bi-cash-coin"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(customer.balance) }}</span><span class="stat-label">الرصيد الحالي (مستحق)</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-secondary-soft"><i class="bi bi-receipt"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_invoiced) }}</span><span class="stat-label">إجمالي الفواتير</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-warning-soft"><i class="bi bi-hourglass-split"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_credit_sales) }}</span><span class="stat-label">مبيعات آجلة / ديون</span></div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card bg-success-soft"><i class="bi bi-check-circle"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_paid_at_sale + total_collected) }}</span><span class="stat-label">إجمالي المدفوع + المحصّل</span></div>
+        </div>
+    </div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="stat-card bg-info-soft"><i class="bi bi-credit-card"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(customer.credit_limit) if customer.credit_limit else 'بدون حد' }}</span><span class="stat-label">سقف الائتمان</span></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-success-soft"><i class="bi bi-wallet2"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(customer.available_credit()) if customer.credit_limit else '-' }}</span><span class="stat-label">المتاح من الائتمان</span></div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-success-soft"><i class="bi bi-cash-stack"></i>
+            <div><span class="stat-num">{{ "%.2f"|format(total_collected) }}</span><span class="stat-label">محصّل من ديون آجلة سابقة</span></div>
+        </div>
+    </div>
+</div>
+
+<h5 class="mb-2">الفواتير المرتبطة بالعميل ({{ invoices|length }})</h5>
+<div class="card mb-4">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>رقم الفاتورة</th><th>التاريخ</th><th>طريقة الدفع</th><th>الإجمالي</th><th>المدفوع</th><th>المتبقي (آجل)</th><th></th></tr></thead>
+            <tbody>
+            {% for i in invoices %}
+                <tr class="{{ 'table-warning' if i.credit_amount > 0 }}">
+                    <td><a href="{{ url_for('invoice_print', iid=i.id) }}">{{ i.invoice_number }}</a></td>
+                    <td>{{ (i.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>{{ i.payment_label() }}</td>
+                    <td>{{ "%.2f"|format(i.total) }}</td>
+                    <td class="text-success">{{ "%.2f"|format(i.paid_amount) }}</td>
+                    <td class="{{ 'text-danger fw-bold' if i.credit_amount > 0 else '' }}">{{ "%.2f"|format(i.credit_amount) if i.credit_amount else '-' }}</td>
+                    <td><a href="{{ url_for('invoice_print', iid=i.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i> فتح الفاتورة</a></td>
+                </tr>
+            {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-3">لا توجد فواتير لهذا العميل</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<h5 class="mb-2">حركات الرصيد (ديون آجلة / تحصيلات)</h5>
+<div class="card">
+    <table class="table mb-0">
+        <thead><tr><th>التاريخ</th><th>النوع</th><th>المرجع</th><th>مدين (دين جديد)</th><th>دائن (تحصيل)</th></tr></thead>
+        <tbody>
+        {% set running = 0 %}
+        {% for m in movements %}
+            {% set running = running + m.debit - m.credit %}
+            <tr>
+                <td>{{ (m.date|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ m.type }}</td>
+                <td>
+                    {% if m.invoice_id %}<a href="{{ url_for('invoice_print', iid=m.invoice_id) }}">{{ m.ref }}</a>
+                    {% else %}{{ m.ref }}{% endif %}
+                </td>
+                <td class="text-danger">{{ "%.2f"|format(m.debit) if m.debit else '-' }}</td>
+                <td class="text-success">{{ "%.2f"|format(m.credit) if m.credit else '-' }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">لا توجد حركات على هذا الحساب</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<a href="{{ url_for('customers') }}" class="btn btn-outline-secondary mt-3 no-print">رجوع</a>
+{% endblock %}

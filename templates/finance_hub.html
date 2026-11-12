@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}اللوحة المالية{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-wallet2"></i> اللوحة المالية</h4>
+<p class="text-muted small">نقطة انطلاق واحدة لكل صفحات المال - كل بطاقة تفتح الصفحة التفصيلية الخاصة بها.</p>
+<div class="row g-3">
+    {% for c in cards %}
+    <div class="col-md-4">
+        <a href="{{ c.url }}" class="text-decoration-none">
+            <div class="card h-100 finance-hub-card">
+                <div class="card-body">
+                    <i class="bi {{ c.icon }} fs-3 mb-2 d-block"></i>
+                    <h6 class="mb-1">{{ c.title }}</h6>
+                    <div class="text-muted small">{{ c.stat }}</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% else %}
+    <div class="col-12 text-muted">لا تملك صلاحية أي صفحة مالية حاليًا.</div>
+    {% endfor %}
+</div>
+{% endblock %}
+{% block extra_css %}
+<style>
+.finance-hub-card { transition: box-shadow .15s ease, transform .15s ease; color: inherit; }
+.finance-hub-card:hover { box-shadow: 0 .25rem .75rem rgba(0,0,0,.08); transform: translateY(-2px); }
+</style>
+{% endblock %}

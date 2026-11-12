@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}المركز المالي{% endblock %}
+{% block content %}
+<style>@media print{.no-print,.sidebar,nav,header,#aiAssistantWidget{display:none!important}.card{border:none!important;box-shadow:none!important}}</style>
+<div class="d-flex justify-content-between align-items-center mb-2 no-print">
+    <h4 class="mb-0"><i class="bi bi-clipboard-data"></i> المركز المالي وفروقات الصرف</h4>
+    <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> طباعة</button>
+</div>
+<div class="small text-muted mb-3">الوضع الآن ({{ printed_at.strftime('%Y-%m-%d %H:%M') }}) بالدينار. الأرصدة بعملة أجنبية محوَّلة بآخر سعر استعملته:
+    {% for c, r in rates.items() %}<span class="badge bg-light text-dark border">1 {{ c }} = {{ "%g"|format(r) }}</span> {% else %}لا توجد عملات أجنبية مستعملة بعد.{% endfor %}</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">ما نملك (الأصول)</div><div class="fw-bold fs-5 text-success">{{ "{:,.2f}".format(total_assets) }}</div></div></div></div>
+    <div class="col-md-4"><div class="card"><div class="card-body py-2"><div class="small text-muted">ما علينا (الالتزامات)</div><div class="fw-bold fs-5 text-danger">{{ "{:,.2f}".format(total_liabilities) }}</div></div></div></div>
+    <div class="col-md-4"><div class="card border-primary"><div class="card-body py-2"><div class="small text-muted">الصافي (رأس مالك الفعلي الآن)</div><div class="fw-bold fs-5 {{ 'text-danger' if net < 0 }}">{{ "{:,.2f}".format(net) }} {{ currency }}</div></div></div></div>
+</div>
+
+{% if unpriced %}
+<div class="alert alert-warning small">أرصدة بعملة أجنبية لم تدخل في الحساب لأنه لا يوجد لها سعر صرف مسجَّل بعد: {{ unpriced|join(' ، ') }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+    {% for title, items, total, cls in (('ما نملك', assets, total_assets, 'text-success'), ('ما علينا', liabilities, total_liabilities, 'text-danger')) %}
+    <div class="col-lg-6"><div class="card h-100">
+        <div class="card-header fw-bold">{{ title }}</div>
+        <table class="table table-sm mb-0 align-middle">
+            <tbody>
+            {% for a in items %}
+                <tr><td>{% if a.url %}<a href="{{ a.url }}" class="text-decoration-none">{{ a.label }}</a>{% else %}{{ a.label }}{% endif %}
+                        {% if a.detail %}<div class="small text-muted" dir="ltr" style="text-align:right">{{ a.detail }}</div>{% endif %}</td>
+                    <td class="text-end fw-bold">{{ "{:,.2f}".format(a.amount) }}</td></tr>
+            {% else %}
+                <tr><td colspan="2" class="text-center text-muted py-3">لا شيء</td></tr>
+            {% endfor %}
+            </tbody>
+            <tfoot class="table-light"><tr><td class="fw-bold">الإجمالي</td><td class="text-end fw-bold {{ cls }}">{{ "{:,.2f}".format(total) }}</td></tr></tfoot>
+        </table>
+    </div></div>
+    {% endfor %}
+</div>
+
+<h5 class="mb-2"><i class="bi bi-currency-exchange"></i> فروقات الصرف مع الموردين</h5>
+<div class="small text-muted mb-2">البضاعة تدخل المخزون بسعر صرف يوم الفاتورة. لو دفعت للمورد بعدها والسعر طلع، تدفع دنانير أكثر: هذا خسارة فرق صرف (والعكس ربح).
+    هذه الفروقات غير محسوبة في الربح الصافي بالتقرير المالي، فاطرحها منه لتعرف ربحك الحقيقي.</div>
+<div class="row g-3 mb-2">
+    <div class="col-md-6"><div class="card"><div class="card-body py-2"><div class="small text-muted">فرق محقَّق (على ما دُفع فعلًا)</div>
+        <div class="fw-bold {{ 'text-danger' if fx_realized > 0 else 'text-success' }}">{{ "{:,.2f}".format(fx_realized|abs) }} {{ currency }} {{ 'خسارة' if fx_realized > 0.005 else ('ربح' if fx_realized < -0.005 else '') }}</div></div></div></div>
+    <div class="col-md-6"><div class="card"><div class="card-body py-2"><div class="small text-muted">فرق متوقع على الباقي (لو دفعت اليوم بآخر سعر)</div>
+        <div class="fw-bold {{ 'text-danger' if fx_unrealized > 0 else 'text-success' }}">{{ "{:,.2f}".format(fx_unrealized|abs) }} {{ currency }} {{ 'خسارة' if fx_unrealized > 0.005 else ('ربح' if fx_unrealized < -0.005 else '') }}</div></div></div></div>
+</div>
+<div class="card">
+    <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>المورد</th><th class="text-end">مشترياته</th><th class="text-end">متوسط سعر الفواتير</th><th class="text-end">دفعنا له</th><th class="text-end">متوسط سعر الدفع</th>
+            <th class="text-end">فرق محقَّق (د.ل)</th><th class="text-end">الباقي عليه</th><th class="text-end">فرق متوقع (د.ل)</th></tr></thead>
+        <tbody>
+        {% for r in fx_rows %}{% set c = r.supplier.currency_code %}
+            <tr>
+                <td><a href="{{ url_for('supplier_statement', sid=r.supplier.id) }}" class="text-decoration-none">{{ r.supplier.name }}</a> <small class="text-muted">{{ c }}</small></td>
+                <td class="text-end">{{ "{:,.2f}".format(r.purchases_foreign) }}</td>
+                <td class="text-end">{{ "%g"|format(r.buy_rate) if r.buy_rate else '-' }}</td>
+                <td class="text-end">{{ "{:,.2f}".format(r.paid_foreign) }}</td>
+                <td class="text-end">{{ "%g"|format(r.pay_rate) if r.pay_rate else '-' }}</td>
+                <td class="text-end fw-bold {{ 'text-danger' if (r.realized or 0) > 0 else 'text-success' }}">{% if r.realized is not none %}{{ "{:,.2f}".format(r.realized|abs) }} {{ 'خسارة' if r.realized > 0.005 else ('ربح' if r.realized < -0.005 else '') }}{% else %}-{% endif %}</td>
+                <td class="text-end">{{ "{:,.2f}".format(r.balance) }}</td>
+                <td class="text-end {{ 'text-danger' if (r.unrealized or 0) > 0 else 'text-success' }}">{% if r.unrealized is not none %}{{ "{:,.2f}".format(r.unrealized|abs) }} {{ 'خسارة' if r.unrealized > 0.005 else ('ربح' if r.unrealized < -0.005 else '') }}{% else %}-{% endif %}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="8" class="text-center text-muted py-3">لا يوجد موردون بعملة أجنبية عليهم حركات</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+<div class="small text-muted mt-2">الديون القديمة المسجَّلة بدون فاتورة لا تدخل في حساب متوسط سعر الفواتير لأنها بلا سعر صرف.</div>
+{% endblock %}

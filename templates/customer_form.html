@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ 'تعديل عميل' if customer else 'إضافة عميل' }}{% endblock %}
+{% block content %}
+<h4 class="mb-3">{{ 'تعديل عميل' if customer else 'إضافة عميل' }}</h4>
+<div class="card"><div class="card-body">
+    <form method="POST">
+        <div class="mb-3"><label class="form-label">الاسم</label>
+            <input type="text" name="name" class="form-control" required value="{{ customer.name if customer else '' }}"></div>
+        <div class="mb-3"><label class="form-label">الهاتف</label>
+            <input type="text" name="phone" class="form-control" value="{{ customer.phone if customer else '' }}"></div>
+        <div class="mb-3"><label class="form-label">العنوان</label>
+            <input type="text" name="address" class="form-control" value="{{ customer.address if customer else '' }}"></div>
+        <div class="mb-3">
+            <label class="form-label">سقف الائتمان (د.ل)</label>
+            <input type="number" step="0.01" name="credit_limit" class="form-control" value="{{ customer.credit_limit if customer else 0 }}">
+            <div class="form-text">اتركه 0 لعدم تحديد سقف. عند تجاوزه في البيع الآجل سيظهر تنبيه للكاشير.</div>
+        </div>
+        <button class="btn btn-primary"><i class="bi bi-save"></i> حفظ</button>
+        <a href="{{ url_for('customers') }}" class="btn btn-outline-secondary">إلغاء</a>
+    </form>
+</div></div>
+{% endblock %}

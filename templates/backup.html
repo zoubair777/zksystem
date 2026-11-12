@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}النسخ الاحتياطي{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-shield-check"></i> النسخ الاحتياطي</h4>
+    <form method="POST">
+        <input type="hidden" name="action" value="run_now">
+        <button class="btn btn-primary"><i class="bi bi-play-circle"></i> نسخة احتياطية الآن</button>
+    </form>
+</div>
+
+{% if status.last_error %}
+<div class="alert alert-warning small"><i class="bi bi-exclamation-triangle"></i> آخر مشكلة: {{ status.last_error }}</div>
+{% endif %}
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="stat-card bg-success-soft"><i class="bi bi-pc-display"></i>
+            <div>
+                <span class="stat-num fs-5">{{ (status.last_local|local).strftime('%Y-%m-%d %H:%M') if status.last_local else 'لا يوجد بعد' }}</span>
+                <span class="stat-label">آخر نسخة على الجهاز (كل ساعة، {{ status.local_count }} نسخة محفوظة)</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card {{ 'bg-primary-soft' if status.connected else 'bg-secondary-soft' }}"><i class="bi bi-google"></i>
+            <div>
+                <span class="stat-num fs-5">{% if status.connected %}{{ (status.last_drive|local).strftime('%Y-%m-%d %H:%M') if status.last_drive else 'بانتظار أول رفع' }}{% else %}غير مربوط{% endif %}</span>
+                <span class="stat-label">آخر رفع إلى Google Drive (يوميًا + بعد كل إغلاق وردية)</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card bg-info-soft"><i class="bi bi-usb-drive"></i>
+            <div>
+                <span class="stat-num fs-6">{{ status.extra_dir or 'غير محدد' }}</span>
+                <span class="stat-label">مجلد النسخة الإضافية (فلاشة)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Google Drive -->
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-google"></i> Google Drive</span>
+        {% if status.connected %}<span class="badge bg-success">مربوط{% if status.account %}: {{ status.account }}{% endif %}</span>
+        {% else %}<span class="badge bg-secondary">غير مربوط</span>{% endif %}
+    </div>
+    <div class="card-body">
+        {% if status.connected %}
+            <p class="mb-2">النسخ تُرفع إلى مجلد <strong>ZG_ERP_Backups</strong> في حساب <strong>{{ status.account or 'Google' }}</strong>، ويُحتفظ بآخر 30 نسخة هناك.
+               النظام يرى فقط الملفات التي أنشأها هو، لا باقي ملفاتك.</p>
+            {% if current_user.is_admin() %}
+            <form method="POST" onsubmit="return confirm('فك ربط Google Drive؟ النسخ المرفوعة سابقًا تبقى في حسابك.')">
+                <input type="hidden" name="action" value="disconnect">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle"></i> فك الربط</button>
+            </form>
+            {% endif %}
+        {% elif not current_user.is_admin() %}
+            <p class="text-muted mb-0">ربط Google Drive يتم من حساب المالك (admin).</p>
+        {% else %}
+            <ol class="small mb-3">
+                <li>ادخل <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a> بحساب Gmail الذي تريد حفظ النسخ فيه، وأنشئ مشروعًا جديدًا (مثلًا <code>ZG ERP</code>).</li>
+                <li>من <b>APIs &amp; Services ← Library</b> ابحث عن <b>Google Drive API</b> واضغط <b>Enable</b>.</li>
+                <li>من <b>OAuth consent screen</b>: اختر <b>External</b>، اكتب اسم التطبيق وبريدك، واحفظ. ثم اضغط <b>Publish app</b> لتصبح الحالة <b>In production</b>
+                    <span class="text-danger">(مهم: في وضع Testing ينتهي الربط كل 7 أيام)</span>.</li>
+                <li>من <b>Credentials ← Create credentials ← OAuth client ID</b>: نوع التطبيق <b>Desktop app</b>، ثم انسخ <b>Client ID</b> و<b>Client secret</b> والصقهما هنا.</li>
+                <li>اضغط <b>ربط حساب Google Drive</b>: يفتح متصفحك على صفحة Google، اختر حسابك ووافق. إن ظهرت رسالة "Google hasn't verified this app" اضغط <b>Advanced ← Go to ZG ERP</b> (هو تطبيقك أنت).</li>
+            </ol>
+            <form method="POST" class="row g-2 align-items-end mb-3">
+                <input type="hidden" name="action" value="save_google">
+                <div class="col-md-5"><label class="form-label small mb-1">Client ID</label>
+                    <input type="text" name="client_id" class="form-control form-control-sm" dir="ltr" value="{{ status.client_id }}" placeholder="xxxx.apps.googleusercontent.com" required></div>
+                <div class="col-md-4"><label class="form-label small mb-1">Client secret {% if status.has_secret %}<span class="text-success">(محفوظ)</span>{% endif %}</label>
+                    <input type="password" name="client_secret" class="form-control form-control-sm" dir="ltr" placeholder="{{ 'اتركه فارغًا للإبقاء على المحفوظ' if status.has_secret else 'GOCSPX-...' }}" {{ '' if status.has_secret else 'required' }}></div>
+                <div class="col-md-3"><button class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-save"></i> حفظ</button></div>
+            </form>
+            {% if status.client_id and status.has_secret %}
+            <form method="POST" action="{{ url_for('backup_google_connect') }}">
+                <button class="btn btn-success"><i class="bi bi-link-45deg"></i> ربط حساب Google Drive</button>
+                <span class="small text-muted ms-2">نفّذ هذه الخطوة من الكمبيوتر الرئيسي الذي يعمل عليه البرنامج.</span>
+            </form>
+            {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- النسخ المحلية -->
+    <div class="col-lg-7">
+        <div class="card h-100">
+            <div class="card-header"><i class="bi bi-pc-display"></i> النسخ على هذا الجهاز <span class="small text-muted" dir="ltr">{{ status.backup_dir }}</span></div>
+            <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>الملف</th><th>الوقت</th><th>الحجم</th><th></th></tr></thead>
+                <tbody>
+                {% for f in status.local_files %}
+                    <tr>
+                        <td class="small font-monospace" dir="ltr">{{ f.name }}</td>
+                        <td class="small">{{ f.mtime.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td class="small">{{ '%.0f'|format(f.size / 1024) }} KB</td>
+                        <td><a href="{{ url_for('backup_download', name=f.name) }}" class="btn btn-sm btn-outline-secondary" title="تنزيل"><i class="bi bi-download"></i></a></td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="4" class="text-center text-muted py-3">لا توجد نسخ بعد - أول نسخة تلقائية بعد دقيقة من تشغيل البرنامج، أو اضغط "نسخة احتياطية الآن".</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            <div class="card-body border-top">
+                <form method="POST" class="row g-2 align-items-end">
+                    <input type="hidden" name="action" value="save_extra_dir">
+                    <div class="col-9"><label class="form-label small mb-1">نسخة إضافية إلى مجلد آخر (فلاشة أو قرص ثانٍ) - اختياري</label>
+                        <input type="text" name="extra_dir" class="form-control form-control-sm" dir="ltr" value="{{ status.extra_dir }}" placeholder="E:\ZG_Backups"></div>
+                    <div class="col-3"><button class="btn btn-sm btn-outline-primary w-100">حفظ</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- السجل + الاسترجاع -->
+    <div class="col-lg-5">
+        <div class="card mb-3">
+            <div class="card-header"><i class="bi bi-journal-text"></i> آخر العمليات</div>
+            <ul class="list-group list-group-flush small">
+            {% for l in logs %}
+                <li class="list-group-item">
+                    <i class="bi {{ 'bi-check-circle text-success' if l.ok else 'bi-x-circle text-danger' }}"></i>
+                    {{ (l.created_at|local).strftime('%m-%d %H:%M') }} · {{ 'يدوي' if l.triggered_by == 'manual' else 'تلقائي' }}
+                    <div class="text-muted">{{ l.message }}</div>
+                </li>
+            {% else %}
+                <li class="list-group-item text-muted">لا يوجد سجل بعد</li>
+            {% endfor %}
+            </ul>
+        </div>
+        <div class="card">
+            <div class="card-header"><i class="bi bi-arrow-counterclockwise"></i> طريقة الاسترجاع عند الحاجة</div>
+            <div class="card-body small">
+                <ol class="mb-0">
+                    <li>أغلق البرنامج تمامًا.</li>
+                    <li>انقل ملف <code>database\erp.db</code> الحالي إلى مكان آخر احتياطًا.</li>
+                    <li>فك ضغط النسخة المطلوبة (من هذا الجهاز أو من Google Drive) وضع ملف <code>erp.db</code> الذي بداخلها في مجلد <code>database</code>.</li>
+                    <li>شغّل البرنامج.</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

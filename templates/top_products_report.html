@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}أفضل المنتجات{% endblock %}
+{% block content %}
+<style>
+@media print{.no-print,.sidebar,nav,header,#aiAssistantWidget,#aiAssistantToggle,#aiAssistantPanel{display:none!important}.card{border:none!important;box-shadow:none!important}}
+.perf-bar{height:6px;background:#e9ecef;border-radius:3px;overflow:hidden;min-width:60px}
+.perf-bar span{display:block;height:100%;background:#2F6B4F}
+#aiAnalysis h6{margin-top:.75rem;font-weight:700}
+</style>
+{% set qs = {'start': start, 'end': end, 'group': group, 'sort': sort, 'order': order, 'limit': limit} %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print flex-wrap gap-2">
+    <h4 class="mb-0"><i class="bi bi-trophy"></i> أفضل المنتجات وتحليل المبيعات</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('top_products_excel', **qs) }}{% if show_all %}&all=1{% endif %}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+        <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> طباعة</button>
+    </div>
+</div>
+
+<div class="card mb-3 no-print"><div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">من تاريخ</label><input type="date" name="start" value="{{ start }}" class="form-control form-control-sm"></div>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">إلى تاريخ</label><input type="date" name="end" value="{{ end }}" class="form-control form-control-sm"></div>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">حسب</label>
+            <select name="group" class="form-select form-select-sm">{% for k, v in groups.items() %}<option value="{{ k }}" {{ 'selected' if k == group }}>{{ v }}</option>{% endfor %}</select></div>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">الترتيب بـ</label>
+            <select name="sort" class="form-select form-select-sm">{% for k, v in sorts.items() %}<option value="{{ k }}" {{ 'selected' if k == sort }}>{{ v }}</option>{% endfor %}</select></div>
+        <div class="col-6 col-md-2"><label class="form-label small mb-1">العرض</label>
+            <select name="order" class="form-select form-select-sm">
+                <option value="best" {{ 'selected' if order == 'best' }}>الأكثر مبيعًا</option>
+                <option value="least" {{ 'selected' if order == 'least' }}>الأقل مبيعًا</option>
+            </select></div>
+        <div class="col-6 col-md-1"><label class="form-label small mb-1">العدد</label>
+            <select name="limit" class="form-select form-select-sm">{% for n in (10, 30, 50, 0) %}<option value="{{ n }}" {{ 'selected' if n == limit }}>{{ n or 'الكل' }}</option>{% endfor %}</select></div>
+        <div class="col-md-1"><button class="btn btn-sm btn-primary w-100">عرض</button></div>
+    </form>
+    <div class="small mt-2 d-flex gap-2 flex-wrap">
+        <span class="text-muted">فترات سريعة:</span>
+        {% for label, days in (('آخر 7 أيام', 7), ('آخر 30 يومًا', 30), ('آخر 90 يومًا', 90), ('آخر سنة', 365)) %}
+        <a href="#" class="quick-period" data-days="{{ days }}">{{ label }}</a>
+        {% endfor %}
+        <a href="{{ url_for('top_products_report', group=group, sort=sort, order=order, limit=limit, all=1) }}">كل الفترات</a>
+    </div>
+</div></div>
+
+<div class="small text-muted mb-2">الفترة: {{ start or 'من البداية' }} ← {{ end or 'حتى اليوم' }} · {{ totals.days }} يوم · طُبع {{ printed_at.strftime('%Y-%m-%d %H:%M') }}
+    · المبيعات بعد خصم الفاتورة والمرتجعات، والربح بتكلفة القطعة وقت البيع.</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">صافي القطع المباعة</div><div class="fw-bold fs-5">{{ totals.net_qty }}</div><div class="small text-muted">مرتجع: {{ totals.returned }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">صافي المبيعات ({{ currency }})</div><div class="fw-bold fs-5">{{ "{:,.2f}".format(totals.revenue) }}</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">الربح ({{ currency }})</div><div class="fw-bold fs-5 {{ 'text-success' if totals.profit >= 0 else 'text-danger' }}">{{ "{:,.2f}".format(totals.profit) }}</div><div class="small text-muted">هامش: {{ totals.margin if totals.margin is not none else '-' }}%</div></div></div></div>
+    <div class="col-6 col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">بضاعة راكدة (لم تُبع)</div><div class="fw-bold fs-5 text-warning">{{ slow_count }}</div><div class="small text-muted">قيمتها: {{ "{:,.2f}".format(slow_value) }}</div></div></div></div>
+</div>
+
+{% if can_ai %}
+<div class="card mb-3 no-print border-primary"><div class="card-body">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <strong><i class="bi bi-stars text-primary"></i> تحليل بالذكاء الاصطناعي</strong>
+        <input type="text" id="aiFocus" class="form-control form-control-sm flex-grow-1" style="max-width:420px" placeholder="سؤال إضافي (اختياري): مثلاً شن نطلب للموسم الجاي؟">
+        <button class="btn btn-sm btn-primary" id="aiAnalyzeBtn"><i class="bi bi-magic"></i> حلّل هذه الفترة</button>
+    </div>
+    <div id="aiAnalysis" class="mt-3 small" style="display:none; line-height:1.9"></div>
+</div></div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header bg-white fw-bold">{{ 'الأكثر' if order == 'best' else 'الأقل' }} مبيعًا حسب {{ groups[group] }} ({{ sorts[sort] }})
+        <span class="text-muted small fw-normal">— يعرض {{ rows|length }} من {{ all_count }}</span></div>
+    <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light"><tr>
+            <th>#</th><th>{{ groups[group] }}</th><th class="text-end">صافي الكمية</th><th class="text-end">مرتجع</th>
+            <th class="text-end">صافي المبيعات</th><th class="text-end">الربح</th><th class="text-end">الهامش</th>
+            <th style="min-width:90px">الحصة</th><th class="text-end">المخزون</th><th class="text-end" title="كم يومًا يكفي المخزون بنفس سرعة البيع">يكفي</th>
+        </tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr>
+            <td class="text-muted">{{ loop.index }}</td>
+            <td>{% if group == 'product' and r.product_id %}<a href="{{ url_for('product_details', pid=r.product_id) }}" class="text-decoration-none">{{ r.label }}</a>
+                {% if r.barcode %}<div class="small text-muted">{{ r.barcode }}</div>{% endif %}{% else %}{{ r.label }} <span class="small text-muted">({{ r.products }} صنف)</span>{% endif %}</td>
+            <td class="text-end fw-bold">{{ r.net_qty }}</td>
+            <td class="text-end {{ 'text-danger' if r.return_rate >= 20 }}">{{ r.returned }}{% if r.returned %} <small>({{ r.return_rate }}%)</small>{% endif %}</td>
+            <td class="text-end">{{ "{:,.2f}".format(r.revenue) }}</td>
+            <td class="text-end {{ 'text-success' if r.profit >= 0 else 'text-danger' }}">{{ "{:,.2f}".format(r.profit) }}</td>
+            <td class="text-end">{{ (r.margin|string + '%') if r.margin is not none else '-' }}</td>
+            <td><div class="perf-bar" title="{{ r.share }}%"><span style="width:{{ [r.share, 100]|min }}%"></span></div><small class="text-muted">{{ r.share }}%</small></td>
+            <td class="text-end {{ 'text-danger fw-bold' if r.stock <= 0 }}">{{ r.stock }}</td>
+            <td class="text-end">{% if r.stock <= 0 %}<span class="badge bg-danger">نفد</span>{% elif r.cover_days is not none %}<span class="{{ 'text-danger fw-bold' if r.cover_days <= 7 else '' }}">{{ r.cover_days }} يوم</span>{% else %}-{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10" class="text-center text-muted py-3">لا توجد مبيعات في هذه الفترة</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-white fw-bold"><i class="bi bi-hourglass-split text-warning"></i> بضاعة راكدة: عليها مخزون ولم يُبع منها شيء في الفترة
+        <span class="text-muted small fw-normal">— مرتبة بقيمة المخزون (بالتكلفة){% if slow_count > slow|length %}، أول {{ slow|length }} من {{ slow_count }}{% endif %}</span></div>
+    <div class="table-responsive">
+    <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light"><tr><th>#</th><th>{{ groups[group] }}</th><th class="text-end">المخزون</th><th class="text-end">قيمته بالتكلفة ({{ currency }})</th></tr></thead>
+        <tbody>
+        {% for r in slow %}
+        <tr><td class="text-muted">{{ loop.index }}</td><td>{{ r.label }}{% if r.barcode %}<div class="small text-muted font-monospace" dir="ltr" style="text-align:right">{{ r.barcode }}</div>{% endif %}</td><td class="text-end">{{ r.stock }}</td><td class="text-end">{{ "{:,.2f}".format(r.stock_value) }}</td></tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-3">لا توجد بضاعة راكدة في هذه الفترة 👍</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('.quick-period').forEach(a => a.addEventListener('click', e => {
+    e.preventDefault();
+    const end = new Date(), start = new Date();
+    start.setDate(end.getDate() - (parseInt(a.dataset.days) - 1));
+    const f = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const form = document.querySelector('form[method=get]');
+    form.start.value = f(start); form.end.value = f(end); form.submit();
+}));
+{% if can_ai %}
+document.getElementById('aiAnalyzeBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('aiAnalyzeBtn'), box = document.getElementById('aiAnalysis');
+    btn.disabled = true; box.style.display = 'block';
+    box.innerHTML = '<span class="spinner-border spinner-border-sm"></span> جاري تحليل الأرقام... (قد يأخذ نصف دقيقة)';
+    try {
+        const res = await fetch("{{ url_for('top_products_analyze') }}", {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({start: {{ start|tojson }}, end: {{ end|tojson }}, question: document.getElementById('aiFocus').value})
+        });
+        const data = await res.json();
+        box.innerHTML = data.answer ? window.zgRenderAi(data.answer) : '<div class="text-danger">' + window.zgEscape(data.error || 'صار خطأ غير متوقع.') + '</div>';
+    } catch (e) {
+        box.innerHTML = '<div class="text-danger">تعذّر الاتصال بالخادم.</div>';
+    }
+    btn.disabled = false;
+});
+{% endif %}
+</script>
+{% endblock %}

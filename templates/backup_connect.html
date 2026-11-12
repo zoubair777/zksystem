@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}ربط Google Drive{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header"><i class="bi bi-google"></i> ربط Google Drive</div>
+            <div class="card-body">
+                {% if opened %}
+                <p class="fs-5"><i class="bi bi-box-arrow-up-right text-primary"></i> فُتحت صفحة Google في متصفح الجهاز.</p>
+                {% else %}
+                <p class="fs-5">افتح الرابط التالي في متصفح الكمبيوتر الرئيسي (Chrome أو Edge):</p>
+                {% endif %}
+                <ol>
+                    <li>اختر حساب Gmail الذي تريد حفظ النسخ فيه.</li>
+                    <li>إن ظهرت "Google hasn't verified this app": اضغط <b>Advanced</b> ثم <b>Go to ZG ERP</b>.</li>
+                    <li>اضغط <b>Continue / Allow</b>.</li>
+                    <li>ستظهر صفحة "تم الربط" - ارجع بعدها لهذه النافذة واضغط "تحديث".</li>
+                </ol>
+                <label class="form-label small text-muted">إن لم يُفتح المتصفح، انسخ هذا الرابط والصقه فيه:</label>
+                <textarea class="form-control form-control-sm font-monospace mb-3" dir="ltr" rows="3" readonly onclick="this.select()">{{ auth_url }}</textarea>
+                <a href="{{ url_for('backup_page') }}" class="btn btn-primary"><i class="bi bi-arrow-repeat"></i> تحديث / رجوع لصفحة النسخ الاحتياطي</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+# أسرار وإعدادات محلية - لا تُرفع أبدًا
+.env
+*.env
+
+# بيانات المحل الحقيقية: قاعدة البيانات وكل نسخها (فيها الزبائن والمبيعات ومفاتيح Google/AI)
+database/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+backups/
+logs/
+exports/
+
+# البرنامج الجاهز (ERP.exe) وملفات البناء: تُعاد بـ build_exe.bat ، وdist\ERP فيه قاعدة البيانات
+dist/
+build/
+*.spec
+
+# ملفات بايثون
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ملفات مؤقتة
+*.tmp
+*.log
+*.zip

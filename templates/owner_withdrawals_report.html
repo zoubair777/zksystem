@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}تقرير سحوبات المالك{% endblock %}
+{% block content %}
+<style>@media print{.no-print,.sidebar,nav,header,#aiAssistantWidget{display:none!important}.card{border:none!important;box-shadow:none!important}}</style>
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h4 class="mb-0"><i class="bi bi-person-dash"></i> تقرير سحوبات المالك (تفصيلي)</h4>
+    <div>
+        <a href="{{ url_for('financial_report', start=start, end=end) }}" class="btn btn-outline-secondary btn-sm">رجوع للتقرير المالي</a>
+        <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer"></i> طباعة</button>
+    </div>
+</div>
+<div class="card mb-3 no-print"><div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label small mb-1">من تاريخ</label><input type="date" name="start" value="{{ start }}" class="form-control form-control-sm"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">إلى تاريخ</label><input type="date" name="end" value="{{ end }}" class="form-control form-control-sm"></div>
+        <div class="col-md-3"><label class="form-label small mb-1">الطريقة</label>
+            <select name="method" class="form-select form-select-sm">
+                <option value="">الكل</option>
+                <option value="cash" {{ 'selected' if method=='cash' }}>نقدي</option>
+                <option value="bank" {{ 'selected' if method=='bank' }}>بنكي</option>
+                <option value="none" {{ 'selected' if method=='none' }}>غير محدد</option>
+            </select></div>
+        <div class="col-md-3"><button class="btn btn-sm btn-outline-primary">عرض</button> <a href="{{ url_for('owner_withdrawals_report') }}" class="btn btn-sm btn-outline-secondary">الكل</a></div>
+    </form>
+</div></div>
+<div class="small text-muted mb-2 d-none d-print-block">الفترة: {{ start or 'من البداية' }} → {{ end or 'حتى اليوم' }} · طُبع {{ printed_at.strftime('%Y-%m-%d %H:%M') }}</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">عدد السحبات</div><div class="fw-bold">{{ entries|length }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">نقدي</div><div class="fw-bold text-danger">{{ "%.2f"|format(totals.cash) }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">بنكي</div><div class="fw-bold text-danger">{{ "%.2f"|format(totals.bank) }}</div></div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body py-2"><div class="small text-muted">الإجمالي ({{ currency }})</div><div class="fw-bold text-danger">{{ "%.2f"|format(total) }}</div></div></div></div>
+</div>
+<div class="card"><div class="table-responsive">
+<table class="table table-sm table-hover align-middle mb-0">
+    <thead class="table-light"><tr><th>#</th><th>تاريخ ووقت السحب</th><th class="text-end">المبلغ</th><th>الطريقة</th><th>الخزينة</th><th>البيان / المرجع</th><th>سجّلها</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+    <tr>
+        <td class="text-muted">{{ loop.index }}</td>
+        <td class="text-nowrap">{{ (e.date|local).strftime('%Y-%m-%d %H:%M') if e.date else '-' }}</td>
+        <td class="text-end fw-bold text-danger">{{ "%.2f"|format(e.amount) }}</td>
+        <td>{% if e.payment_method=='cash' %}نقدي{% elif e.payment_method=='bank' %}بنكي{% else %}غير محدد{% endif %}</td>
+        <td>{{ boxes.get(e.cashbox_id, '-') }}</td>
+        <td class="small">{{ e.note or '' }}{% if e.reference %} <span class="text-muted">({{ e.reference }})</span>{% endif %}</td>
+        <td class="small">{{ users.get(e.user_id, '-') }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-center text-muted py-3">لا توجد سحبات في هذه الفترة</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot class="table-light fw-bold"><tr><td colspan="2">الإجمالي</td><td class="text-end text-danger">{{ "%.2f"|format(total) }}</td><td colspan="4"></td></tr></tfoot>
+</table>
+</div></div>
+{% endblock %}

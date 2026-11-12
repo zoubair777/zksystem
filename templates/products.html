@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}المنتجات{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>المنتجات</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('barcode_labels') }}" class="btn btn-primary btn-sm"><i class="bi bi-upc-scan"></i> طباعة ملصقات باركود</a>
+        <a href="{{ url_for('products_barcode_pdf', q=q) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-upc"></i> PDF بالأكواد</a>
+        {% if current_user.is_manager_or_admin() %}<a href="{{ url_for('products_barcode_pdf', q=q, cost=1) }}" class="btn btn-outline-secondary btn-sm" title="نفس القائمة مع عمود التكلفة"><i class="bi bi-upc"></i> مع التكلفة</a>{% endif %}
+        {% if current_user.has_permission('reports') %}
+        <a href="{{ url_for('export_inventory_excel_route') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+        <a href="{{ url_for('export_inventory_pdf_route') }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+        {% endif %}
+        {% if current_user.is_manager_or_admin() %}
+        {% if current_user.is_manager_or_admin() %}<a href="{{ url_for('recalc_product_costs') }}" class="btn btn-outline-warning"><i class="bi bi-currency-exchange"></i> تصحيح تكلفة المشتريات بالعملة</a>{% endif %}
+        <a href="{{ url_for('bulk_add_products') }}" class="btn btn-outline-primary"><i class="bi bi-layout-text-sidebar-reverse"></i> إضافة دفعة منتجات</a>
+        <a href="{{ url_for('add_product') }}" class="btn btn-primary"><i class="bi bi-plus-lg"></i> إضافة منتج</a>
+        {% endif %}
+    </div>
+</div>
+<form class="mb-3" method="get">
+    <div class="input-group" style="max-width:400px">
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="ابحث بالاسم أو الباركود">
+        <button class="btn btn-outline-secondary"><i class="bi bi-search"></i></button>
+    </div>
+</form>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead><tr>
+                <th>الاسم</th><th>الباركود</th><th>التصنيف</th><th>المقاس</th><th>اللون</th>
+                {% if current_user.is_manager_or_admin() %}<th>سعر الشراء</th>{% endif %}
+                <th>سعر البيع</th><th>الكمية</th><th></th>
+            </tr></thead>
+            <tbody>
+            {% for p in products %}
+                <tr>
+                    <td><a href="{{ url_for('product_details', pid=p.id) }}" class="fw-bold text-decoration-none" title="عرض المبيعات والكميات">{{ p.name }}</a></td>
+                    <td><code>{{ p.barcode }}</code></td>
+                    <td>{{ p.category.name if p.category else '-' }}</td>
+                    <td>{{ p.size or '-' }}</td>
+                    <td>{{ p.color or '-' }}</td>
+                    {% if current_user.is_manager_or_admin() %}<td>{{ "%.2f"|format(p.purchase_price) }}</td>{% endif %}
+                    <td>{{ "%.2f"|format(p.sale_price) }}</td>
+                    <td>
+                        <span class="badge {{ 'bg-danger' if p.total_quantity() <= 5 else 'bg-success' }}">
+                            {{ p.total_quantity() }}
+                        </span>
+                    </td>
+                    <td class="text-nowrap">
+                        <a href="{{ url_for('barcode_labels', product_id=p.id) }}" class="btn btn-sm btn-outline-primary" title="طباعة ملصق باركود"><i class="bi bi-upc-scan"></i></a>
+                        {% if current_user.is_manager_or_admin() or current_user.can_override_price %}
+                        <a href="{{ url_for('edit_product', pid=p.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a>
+                        {% endif %}
+                        {% if current_user.is_manager_or_admin() %}
+                        <a href="{{ url_for('delete_product', pid=p.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('تأكيد الحذف؟')"><i class="bi bi-trash"></i></a>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="9" class="text-center text-muted py-4">لا توجد منتجات</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

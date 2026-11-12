@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}تقرير موظف{% endblock %}
+{% block content %}
+<h4 class="mb-3">التقرير المالي التفصيلي للموظف</h4>
+<div class="card mb-3"><div class="card-body"><form method="get" class="row g-2">
+<div class="col-md-3"><label>من</label><input type="date" name="start" value="{{start}}" class="form-control"></div>
+<div class="col-md-3"><label>إلى</label><input type="date" name="end" value="{{end}}" class="form-control"></div>
+<div class="col-md-4"><label>الموظف</label><select name="user_id" class="form-select"><option value="">كل الموظفين</option>{% for u in users %}<option value="{{u.id}}" {% if selected_user==u.id %}selected{% endif %}>{{u.full_name}}</option>{% endfor %}</select></div>
+<div class="col-md-2 d-flex align-items-end"><button class="btn btn-primary w-100">عرض</button></div>
+</form></div></div>
+<div class="card"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>الموظف</th><th>نقدي</th><th>بنكي</th><th>آجل</th><th>الإجمالي</th></tr></thead><tbody>
+{% set total=namespace(cash=0,bank=0,credit=0,all=0) %}
+{% for i in invoices %}{% set total.cash=total.cash+i.cash_amount %}{% set total.bank=total.bank+i.bank_amount %}{% set total.credit=total.credit+i.credit_amount %}{% set total.all=total.all+i.total %}
+<tr><td>{{(i.date|local).strftime('%Y-%m-%d %H:%M')}}</td><td>{{i.invoice_number}}</td><td>{{i.user.full_name if i.user else '-'}}</td><td>{{'%.2f'|format(i.cash_amount)}}</td><td>{{'%.2f'|format(i.bank_amount)}}</td><td>{{'%.2f'|format(i.credit_amount)}}</td><td class="fw-bold">{{'%.2f'|format(i.total)}} {{currency}}</td></tr>
+{% else %}<tr><td colspan="7" class="text-center py-4">لا توجد بيانات ضمن الفترة.</td></tr>{% endfor %}
+</tbody>{% if invoices %}<tfoot><tr class="fw-bold"><td colspan="3">الإجمالي</td><td>{{'%.2f'|format(total.cash)}}</td><td>{{'%.2f'|format(total.bank)}}</td><td>{{'%.2f'|format(total.credit)}}</td><td>{{'%.2f'|format(total.all)}} {{currency}}</td></tr></tfoot>{% endif %}</table></div></div>
+{% endblock %}

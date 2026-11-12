@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_pagination.html" import render_pager %}
+{% block title %}الورديات{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>الورديات</h4>
+    {% if not active_shift %}
+    <a href="{{ url_for('open_shift') }}" class="btn btn-primary"><i class="bi bi-play-circle"></i> فتح وردية</a>
+    {% else %}
+    <a href="{{ url_for('close_shift') }}" class="btn btn-danger"><i class="bi bi-stop-circle"></i> إغلاق ورديتي الحالية</a>
+    {% endif %}
+</div>
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small mb-1">من تاريخ</label>
+                <input type="date" name="start" value="{{ start or '' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small mb-1">إلى تاريخ</label>
+                <input type="date" name="end" value="{{ end or '' }}" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> بحث</button>
+                {% if start or end %}<a href="{{ url_for('shifts') }}" class="btn btn-sm btn-outline-secondary">إلغاء</a>{% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+<div class="card">
+    <table class="table table-hover mb-0">
+        <thead><tr>
+            <th>#</th>{% if current_user.is_manager_or_admin() %}<th>الكاشير</th>{% endif %}
+            <th>وقت الفتح</th><th>وقت الإغلاق</th><th>افتتاحي</th><th>متوقع</th><th>معدود</th><th>الفرق</th><th>الحالة</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for row in rows %}{% set s = row.shift %}
+            <tr>
+                <td>{{ s.id }}</td>
+                {% if current_user.is_manager_or_admin() %}<td>{{ s.user.full_name }}</td>{% endif %}
+                <td>{{ (s.opened_at|local).strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ (s.closed_at|local).strftime('%Y-%m-%d %H:%M') if s.closed_at else '-' }}</td>
+                <td>{{ "%.2f"|format(s.opening_cash) }}</td>
+                <td>{{ "%.2f"|format(row.expected) }}</td>
+                <td>{{ "%.2f"|format(s.counted_cash) if s.counted_cash is not none else '-' }}</td>
+                <td class="{{ 'text-danger fw-bold' if row.difference and row.difference != 0 }}">
+                    {{ "%.2f"|format(row.difference) if row.difference is not none else '-' }}
+                </td>
+                <td><span class="badge {{ 'bg-success' if s.status=='open' else 'bg-secondary' }}">{{ 'مفتوحة' if s.status=='open' else 'مغلقة' }}</span></td>
+                <td class="text-nowrap">
+                    <a href="{{ url_for('shift_detail', sid=s.id) }}" class="btn btn-sm btn-outline-primary">تفاصيل</a>
+                    <a href="{{ url_for('shift_report_print', sid=s.id) }}" class="btn btn-sm btn-outline-dark" title="طباعة التقرير المالي"><i class="bi bi-printer"></i></a>
+                    {% if current_user.has_permission('shifts_manage') %}
+                    <form method="POST" action="{{ url_for('delete_shift', sid=s.id) }}" class="d-inline" onsubmit="return confirm('حذف هذه الوردية؟ (لن يتم حذف فواتيرها، فقط فك ارتباطها)')">
+                        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="9" class="text-center text-muted py-3">لا توجد ورديات</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{{ render_pager(pager, 'shifts') }}
+{% endblock %}

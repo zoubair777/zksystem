@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}العملات{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-currency-exchange"></i> العملات</h4>
+    <a href="{{ url_for('add_purchase') }}" class="btn btn-outline-secondary btn-sm">فاتورة شراء جديدة</a>
+</div>
+<div class="alert alert-info small">
+    سعر الصرف لا يُحفظ هنا؛ تُدخله مع كل فاتورة شراء (كم دينار ليبي = 1 وحدة من العملة) ويُثبَّت مع الفاتورة،
+    وتتذكّر الفاتورة التالية آخر سعر استخدمته لنفس العملة. هنا فقط تحدد العملات المتاحة للاختيار.
+</div>
+<div class="row g-3">
+    <div class="col-md-7">
+        <div class="card"><div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead class="table-light"><tr><th>الرمز</th><th>الاسم</th><th>الرمز المختصر</th><th>الحالة</th><th></th></tr></thead>
+                <tbody>
+                {% for c in currencies %}
+                <tr>
+                    <td class="fw-bold">{{ c.code }}</td><td>{{ c.name }}</td><td>{{ c.symbol or '' }}</td>
+                    <td>{% if c.is_local %}<span class="badge bg-primary">محلية</span>{% elif c.is_active %}<span class="badge bg-success">مفعّلة</span>{% else %}<span class="badge bg-secondary">موقوفة</span>{% endif %}</td>
+                    <td>{% if not c.is_local %}
+                        <form method="post" class="d-inline"><input type="hidden" name="action" value="toggle"><input type="hidden" name="currency_id" value="{{ c.id }}">
+                            <button class="btn btn-sm btn-outline-secondary">{{ 'إيقاف' if c.is_active else 'تفعيل' }}</button></form>
+                    {% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+    </div>
+    <div class="col-md-5">
+        <div class="card"><div class="card-body">
+            <h6>إضافة عملة</h6>
+            <form method="post">
+                <input type="hidden" name="action" value="add">
+                <div class="mb-2"><label class="form-label">الرمز (إنجليزي)</label><input name="code" class="form-control" maxlength="6" placeholder="مثال: SAR" required></div>
+                <div class="mb-2"><label class="form-label">الاسم</label><input name="name" class="form-control" placeholder="ريال سعودي" required></div>
+                <div class="mb-3"><label class="form-label">الرمز المختصر (اختياري)</label><input name="symbol" class="form-control" placeholder="ر.س"></div>
+                <button class="btn btn-primary">إضافة</button>
+            </form>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

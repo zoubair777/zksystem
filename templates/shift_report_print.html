@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>تقرير الوردية #{{ shift.id }}</title>
+<link href="{{ url_for('static', filename='vendor/cairo/cairo.css') }}" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Cairo', sans-serif; padding: 24px; color: #222; font-size: 13px; }
+.head { display: flex; justify-content: space-between; border-bottom: 3px solid #333; padding-bottom: 10px; margin-bottom: 12px; }
+.head h2 { font-size: 1.4em; }
+.head p { margin: 1px 0; }
+h3 { font-size: 1.05em; margin: 14px 0 6px; border-bottom: 1px solid #333; padding-bottom: 2px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ccc; padding: 5px 6px; text-align: center; }
+th { background: #f2f2f2; }
+.kv td:first-child { text-align: right; }
+.kv td:last-child { text-align: left; font-weight: bold; white-space: nowrap; }
+.kv tr.total td { background: #f7f7f7; font-size: 1.05em; }
+.neg { color: #c0392b; }
+.pos { color: #1e7e34; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.sign { display: flex; justify-content: space-between; margin-top: 30px; }
+.sign div { width: 45%; border-top: 1px dashed #333; padding-top: 4px; text-align: center; }
+.toolbar { margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar button, .toolbar a { padding: 8px 22px; border: none; border-radius: 6px; cursor: pointer; color: #fff; text-decoration: none; font-family: inherit; }
+
+/* طابعة إيصالات 80مم */
+body.paper-80mm { width: 76mm; padding: 2mm 1mm; font-size: 10.5px; color: #000; }
+body.paper-80mm .head { flex-direction: column; text-align: center; border-bottom: 1px dashed #000; }
+body.paper-80mm .head > div { text-align: center !important; }
+body.paper-80mm .grid { display: block; }
+body.paper-80mm h3 { font-size: 11px; border-bottom: 1px dashed #000; margin: 6px 0 3px; }
+body.paper-80mm th, body.paper-80mm td { border: none; border-bottom: 1px dashed #aaa; padding: 2px 1px; font-size: 10px; }
+body.paper-80mm th { background: transparent; border-bottom: 1px solid #000; }
+body.paper-80mm .wide-only { display: none; }
+body.paper-80mm .sign { margin-top: 14px; }
+
+@media print { .toolbar { display: none !important; } body { padding: 0; } }
+</style>
+</head>
+<body>
+{% set refunds = shift.refunds_by_method() %}
+<div class="head">
+    <div>
+        <h2>{{ company }}</h2>
+        {% if company_phone %}<p>{{ company_phone }}</p>{% endif %}
+        {% if company_address %}<p>{{ company_address }}</p>{% endif %}
+        <p style="font-weight:bold; margin-top:4px">تقرير مالي تفصيلي للوردية #{{ shift.id }}</p>
+    </div>
+    <div style="text-align:left">
+        <p><strong>الكاشير:</strong> {{ shift.user.full_name if shift.user else '-' }}</p>
+        <p><strong>الخزينة:</strong> {{ shift.cashbox.name if shift.cashbox else '-' }}</p>
+        <p><strong>الفتح:</strong> {{ (shift.opened_at|local).strftime('%Y-%m-%d %H:%M') }}</p>
+        <p><strong>الإغلاق:</strong> {{ (shift.closed_at|local).strftime('%Y-%m-%d %H:%M') if shift.closed_at else 'مفتوحة' }}</p>
+        <p><strong>طُبع:</strong> {{ printed_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    </div>
+</div>
+
+<div class="grid">
+    <div>
+        <h3>١) المبيعات حسب طريقة الدفع</h3>
+        <table class="kv">
+            <tr><td>عدد الفواتير</td><td>{{ shift.invoices_count() }}</td></tr>
+            <tr><td>قطع مباعة</td><td>{{ shift.pieces_sold() }}</td></tr>
+            <tr><td>نقدًا</td><td>{{ "%.2f"|format(shift.cash_sales()) }}</td></tr>
+            <tr><td>بنكي / إلكتروني</td><td>{{ "%.2f"|format(shift.bank_sales()) }}</td></tr>
+            <tr><td>آجل (دين على العملاء)</td><td>{{ "%.2f"|format(shift.credit_sales()) }}</td></tr>
+            <tr><td>مدفوع برصيد استبدال</td><td>{{ "%.2f"|format(shift.exchange_credit_used()) }}</td></tr>
+            <tr class="total"><td>إجمالي المبيعات</td><td>{{ "%.2f"|format(shift.total_sales()) }} {{ currency }}</td></tr>
+        </table>
+    </div>
+    <div>
+        <h3>٢) المرتجعات والاستبدال</h3>
+        <table class="kv">
+            <tr><td>عمليات إرجاع ({{ shift.pure_returns()|length }})</td><td class="neg">- {{ "%.2f"|format(shift.pure_returns_total()) }}</td></tr>
+            <tr><td>عمليات استبدال ({{ shift.exchanges()|length }}) - بضاعة مُعادة</td><td class="neg">- {{ "%.2f"|format(shift.exchange_returned_total()) }}</td></tr>
+            <tr><td>استبدال - بضاعة جديدة (ضمن المبيعات)</td><td>{{ "%.2f"|format(shift.exchange_new_total()) }}</td></tr>
+            <tr><td>فروقات استبدال حصّلناها</td><td class="pos">{{ "%.2f"|format(shift.exchange_collected()) }}</td></tr>
+            <tr><td>فروقات استبدال رددناها</td><td class="neg">{{ "%.2f"|format(shift.exchange_refunded()) }}</td></tr>
+            <tr><td>قطع مُرجَعة</td><td>{{ shift.pieces_returned() }}</td></tr>
+            <tr class="total"><td>صافي المبيعات بعد المرتجعات</td><td>{{ "%.2f"|format(shift.net_sales()) }} {{ currency }}</td></tr>
+        </table>
+    </div>
+    <div>
+        <h3>٣) ما رُدّ للعملاء فعليًا</h3>
+        <table class="kv">
+            <tr><td>نقدًا من الصندوق</td><td class="neg">{{ "%.2f"|format(refunds.cash) }}</td></tr>
+            <tr><td>تحويل بنكي</td><td class="neg">{{ "%.2f"|format(refunds.bank) }}</td></tr>
+            <tr><td>خصم من دين العميل</td><td>{{ "%.2f"|format(refunds.customer_credit) }}</td></tr>
+        </table>
+        <h3>٤) حركات مالية أخرى</h3>
+        <table class="kv">
+            <tr><td>تحصيل من عملاء</td><td>{{ "%.2f"|format(shift.collected_from_customers()) }}</td></tr>
+            <tr><td>إيرادات أخرى</td><td>{{ "%.2f"|format(shift.other_income()) }}</td></tr>
+            <tr><td>مصروفات</td><td class="neg">- {{ "%.2f"|format(shift.total_expenses()) }}</td></tr>
+            <tr><td>مردود نقدًا من صندوق هذه الخزينة</td><td class="neg">- {{ "%.2f"|format(shift.refunds_cash()) }}</td></tr>
+            <tr><td>سلف/سحوبات/رواتب (صافي نقدي)</td><td>{{ "%.2f"|format(shift.other_cash_movements()) }}</td></tr>
+            <tr><td>تحويلات بين الخزائن (داخل − خارج)</td><td>{{ "%.2f"|format(shift.transfers_in() - shift.transfers_out()) }}</td></tr>
+        </table>
+    </div>
+    <div>
+        <h3>٥) مطابقة الصندوق</h3>
+        <table class="kv">
+            <tr><td>النقد الافتتاحي</td><td>{{ "%.2f"|format(shift.opening_cash) }}</td></tr>
+            <tr class="total"><td>النقد المتوقع</td><td>{{ "%.2f"|format(shift.expected_cash()) }} {{ currency }}</td></tr>
+            <tr><td>النقد المعدود</td><td>{{ "%.2f"|format(shift.counted_cash) if shift.counted_cash is not none else 'لم يُغلق' }}</td></tr>
+            {% if shift.difference() is not none %}
+            <tr class="total"><td>الفرق</td>
+                <td class="{{ 'neg' if shift.difference() < 0 else ('pos' if shift.difference() > 0 else '') }}">
+                    {{ "%.2f"|format(shift.difference()) }}
+                    {% if shift.difference() == 0 %}(مطابق){% elif shift.difference() > 0 %}(زيادة){% else %}(عجز){% endif %}</td></tr>
+            {% endif %}
+        </table>
+        {% if shift.note %}<p style="margin-top:4px">ملاحظات: {{ shift.note }}</p>{% endif %}
+    </div>
+</div>
+
+<h3>٦) الأصناف المباعة</h3>
+<table>
+    <thead><tr><th>المنتج</th><th class="wide-only">المقاس/اللون</th><th>الكمية</th><th>القيمة</th></tr></thead>
+    <tbody>
+    {% for p, q, t in shift.items_summary() %}
+        <tr><td>{{ p.display_name() }}</td><td class="wide-only">{{ p.size or '' }} {{ p.color or '' }}</td><td>{{ q }}</td><td>{{ "%.2f"|format(t) }}</td></tr>
+    {% else %}
+        <tr><td colspan="4">لا توجد مبيعات</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<h3>٧) سجل الفواتير</h3>
+<table>
+    <thead><tr><th>الرقم</th><th>الوقت</th><th class="wide-only">العميل</th><th>الدفع</th><th>الإجمالي</th></tr></thead>
+    <tbody>
+    {% for i in shift.invoices %}
+        <tr style="{{ 'text-decoration:line-through;color:#999' if i.status == 'voided' }}">
+            <td>{{ i.invoice_number }}</td><td>{{ (i.date|local).strftime('%H:%M') }}</td>
+            <td class="wide-only">{{ i.customer.name if i.customer else 'نقدي' }}</td>
+            <td>{{ i.payment_label() }}</td><td>{{ "%.2f"|format(i.total) }}</td>
+        </tr>
+    {% else %}
+        <tr><td colspan="5">لا توجد فواتير</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% if shift.period_returns() %}
+<h3>٨) سجل المرتجعات والاستبدال</h3>
+<table>
+    <thead><tr><th>الرقم</th><th>الوقت</th><th>النوع</th><th class="wide-only">الفاتورة</th><th>القيمة</th></tr></thead>
+    <tbody>
+    {% for r in shift.period_returns() %}
+        <tr>
+            <td>{{ r.return_number }}</td><td>{{ (r.date|local).strftime('%H:%M') }}</td>
+            <td>{% if r.is_exchange() %}استبدال ({{ '%+.2f'|format(r.exchange_difference()) }}){% else %}إرجاع{% endif %}</td>
+            <td class="wide-only">{{ r.invoice.invoice_number }}{% if r.exchange_invoice %} ← {{ r.exchange_invoice.invoice_number }}{% endif %}</td>
+            <td class="neg">- {{ "%.2f"|format(r.total) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if shift.expenses_list() %}
+<h3>٩) المصروفات</h3>
+<table>
+    <thead><tr><th>الوقت</th><th>الطريقة</th><th>المبلغ</th><th class="wide-only">ملاحظة</th></tr></thead>
+    <tbody>
+    {% for e in shift.expenses_list() %}
+        <tr><td>{{ (e.date|local).strftime('%H:%M') }}</td><td>{{ 'بنكي' if e.payment_method == 'bank' else 'نقدي' }}</td>
+            <td class="neg">{{ "%.2f"|format(e.amount) }}</td><td class="wide-only">{{ e.note or '-' }}</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+<div class="sign"><div>توقيع الكاشير</div><div>توقيع المدير</div></div>
+
+<div class="toolbar">
+    <select id="paperSize" style="padding:6px 10px; border-radius:6px; border:1px solid #ccc; font-family:inherit">
+        <option value="a4">A4</option>
+        <option value="80mm">80مم - طابعة إيصالات</option>
+    </select>
+    <button onclick="window.print()" style="background:#1a73e8">طباعة</button>
+    <a href="{{ url_for('export_shift_pdf_route', sid=shift.id) }}" style="background:#c0392b">PDF</a>
+    <a href="{{ url_for('export_shift_excel_route', sid=shift.id) }}" style="background:#1e7e34">Excel</a>
+    <a href="{{ url_for('shift_detail', sid=shift.id) }}" style="background:#6c757d">رجوع</a>
+</div>
+<script>
+    const KEY = 'zg_shift_report_paper', sel = document.getElementById('paperSize'), st = document.createElement('style');
+    document.head.appendChild(st);
+    function apply(v) {
+        document.body.classList.toggle('paper-80mm', v === '80mm');
+        st.textContent = v === '80mm' ? '@page { size: 80mm auto; margin: 2mm 1mm; }' : '@page { size: A4; margin: 10mm; }';
+    }
+    let saved = 'a4';
+    try { saved = localStorage.getItem(KEY) || 'a4'; } catch (e) {}
+    sel.value = saved; apply(saved);
+    sel.addEventListener('change', () => { try { localStorage.setItem(KEY, sel.value); } catch (e) {} apply(sel.value); });
+</script>
+</body>
+</html>

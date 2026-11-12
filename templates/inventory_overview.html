@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}المخزون الحالي{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0"><i class="bi bi-boxes"></i> المخزون الحالي داخل المتجر</h4>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('products_barcode_pdf', **request.args) }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-upc"></i> PDF بالأكواد</a>
+        <a href="{{ url_for('inventory_export_excel', **request.args) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-excel"></i> تصدير العرض الحالي</a>
+    </div>
+</div>
+
+<!-- بطاقات الإجماليات -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3"><div class="stat-card bg-primary-soft"><i class="bi bi-stack"></i>
+        <div><span class="stat-num">{{ summary.pieces }}</span><span class="stat-label">إجمالي القطع بالمخزون</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="stat-card bg-info-soft"><i class="bi bi-tags"></i>
+        <div><span class="stat-num">{{ summary.in_stock }} / {{ summary.skus }}</span><span class="stat-label">أصناف متوفرة / إجمالي الأصناف</span></div></div></div>
+    <div class="col-6 col-md-3"><div class="stat-card bg-success-soft"><i class="bi bi-cash-stack"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(summary.sale_value) }}</span><span class="stat-label">قيمة المخزون بسعر البيع ({{ currency }})</span></div></div></div>
+    {% if show_cost %}
+    <div class="col-6 col-md-3"><div class="stat-card bg-secondary-soft"><i class="bi bi-receipt"></i>
+        <div><span class="stat-num">{{ "%.2f"|format(summary.cost_value) }}</span><span class="stat-label">قيمة المخزون بالتكلفة ({{ currency }})</span></div></div></div>
+    {% else %}
+    <div class="col-6 col-md-3"><div class="stat-card bg-danger-soft"><i class="bi bi-exclamation-triangle"></i>
+        <div><span class="stat-num">{{ summary.low }} / {{ summary.out }}</span><span class="stat-label">منخفض / نافد</span></div></div></div>
+    {% endif %}
+</div>
+
+<!-- أزرار العرض -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            {% set icons = {'products': 'bi-grid-3x3-gap', 'category': 'bi-tags', 'size': 'bi-rulers', 'color': 'bi-palette',
+                            'warehouse': 'bi-building', 'low': 'bi-exclamation-triangle', 'out': 'bi-x-octagon'} %}
+            {% for key, label in views.items() %}
+            {% set args = dict(request.args) %}{% set _ = args.update({'view': key}) %}
+            <a href="{{ url_for('inventory_overview', **args) }}"
+               class="btn btn-sm {{ 'btn-primary' if view == key else ('btn-outline-danger' if key in ('low', 'out') else 'btn-outline-primary') }}">
+                <i class="bi {{ icons[key] }}"></i> {{ label }}
+                {% if key == 'low' %}<span class="badge bg-warning text-dark">{{ summary.low }}</span>{% endif %}
+                {% if key == 'out' %}<span class="badge bg-danger">{{ summary.out }}</span>{% endif %}
+            </a>
+            {% endfor %}
+        </div>
+        <form method="get" class="row g-2 align-items-end">
+            <input type="hidden" name="view" value="{{ view }}">
+            <div class="col-md-4"><input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="بحث بالاسم أو الباركود أو المقاس أو اللون"></div>
+            <div class="col-md-3"><select name="warehouse_id" class="form-select form-select-sm">
+                <option value="">كل المخازن</option>
+                {% for w in warehouses %}<option value="{{ w.id }}" {{ 'selected' if warehouse_id == w.id }}>{{ w.name }}</option>{% endfor %}
+            </select></div>
+            <div class="col-md-3"><select name="category_id" class="form-select form-select-sm">
+                <option value="">كل التصنيفات</option>
+                {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if category_id == c.id }}>{{ c.name }}</option>{% endfor %}
+            </select></div>
+            <div class="col-md-2 d-flex gap-1">
+                <button class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-search"></i> عرض</button>
+                {% if q or warehouse_id or category_id %}<a href="{{ url_for('inventory_overview', view=view) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-x"></i></a>{% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if groups %}
+<!-- عرض مُجمَّع -->
+<div class="card">
+    <div class="card-header">{{ views[view] }}</div>
+    <div class="table-responsive">
+    <table class="table table-hover mb-0">
+        <thead><tr><th>البند</th><th>عدد الأصناف</th><th>إجمالي الكمية</th><th style="width:30%">النسبة من المخزون</th><th>قيمة البيع</th>{% if show_cost %}<th>قيمة التكلفة</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for g in groups %}
+            {% set pct = (g.qty / summary.pieces * 100) if summary.pieces else 0 %}
+            <tr>
+                <td class="fw-bold">{{ g.label }}</td>
+                <td>{{ g.skus }}</td>
+                <td>{{ g.qty }}</td>
+                <td><div class="progress" style="height:8px" title="{{ '%.1f'|format(pct) }}%"><div class="progress-bar" style="width:{{ pct }}%"></div></div>
+                    <span class="small text-muted">{{ '%.1f'|format(pct) }}%</span></td>
+                <td>{{ "%.2f"|format(g.sale_value) }}</td>
+                {% if show_cost %}<td>{{ "%.2f"|format(g.cost_value) }}</td>{% endif %}
+            </tr>
+        {% else %}<tr><td colspan="6" class="text-center text-muted py-3">لا توجد بيانات</td></tr>{% endfor %}
+        </tbody>
+        <tfoot><tr class="fw-bold"><td>الإجمالي</td><td>{{ summary.skus }}</td><td>{{ summary.pieces }}</td><td></td>
+            <td>{{ "%.2f"|format(summary.sale_value) }}</td>{% if show_cost %}<td>{{ "%.2f"|format(summary.cost_value) }}</td>{% endif %}</tr></tfoot>
+    </table>
+    </div>
+</div>
+{% else %}
+<!-- عرض المنتجات -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between">
+        <span>{{ views[view] }} <span class="text-muted small">({{ rows|length }} صنف - حد التنبيه {{ summary.threshold }} قطع)</span></span>
+    </div>
+    <div class="table-responsive">
+    <table class="table table-hover mb-0 align-middle">
+        <thead><tr><th>المنتج</th><th>الباركود</th><th>التصنيف</th><th>المقاس</th><th>اللون</th><th>الكمية</th><th>سعر البيع</th><th>قيمة البيع</th>{% if show_cost %}<th>التكلفة</th>{% endif %}<th></th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+            {% set p = r.product %}
+            <tr>
+                <td>{{ p.name }}</td>
+                <td class="font-monospace small" dir="ltr" style="text-align:right">{{ p.barcode or '-' }}</td>
+                <td>{{ p.category.name if p.category else '-' }}</td>
+                <td>{{ p.size or '-' }}</td>
+                <td>{{ p.color or '-' }}</td>
+                <td><span class="badge {{ 'bg-danger' if r.status == 'out' else ('bg-warning text-dark' if r.status == 'low' else 'bg-success') }} fs-6">{{ r.qty }}</span></td>
+                <td>{{ "%.2f"|format(p.sale_price or 0) }}</td>
+                <td>{{ "%.2f"|format(r.sale_value) }}</td>
+                {% if show_cost %}<td>{{ "%.2f"|format(r.cost_value) }}</td>{% endif %}
+                <td>
+                    {% if r.breakdown %}
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#wh{{ p.id }}" title="التوزيع على المخازن"><i class="bi bi-building"></i></button>
+                    {% endif %}
+                    {% if show_cost %}<a href="{{ url_for('product_details', pid=p.id) }}" class="btn btn-sm btn-outline-primary" title="بطاقة المنتج"><i class="bi bi-card-text"></i></a>{% endif %}
+                </td>
+            </tr>
+            {% if r.breakdown %}
+            <tr class="collapse" id="wh{{ p.id }}"><td colspan="10" class="bg-light small">
+                {% for name, n in r.breakdown %}<span class="me-3"><i class="bi bi-building"></i> {{ name }}: <strong>{{ n }}</strong></span>{% endfor %}
+            </td></tr>
+            {% endif %}
+        {% else %}<tr><td colspan="10" class="text-center text-muted py-3">لا توجد أصناف مطابقة</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

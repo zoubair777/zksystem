@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}سجل الأنشطة{% endblock %}
+{% block content %}
+<h4 class="mb-3">سجل الأنشطة (آخر 300 عملية)</h4>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>الوقت</th><th>المستخدم</th><th>العملية</th><th>العنصر</th><th>التفاصيل</th><th>IP</th></tr></thead>
+            <tbody>
+            {% for l in logs %}
+                <tr>
+                    <td>{{ (l.created_at|local).strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>{{ l.user.full_name if l.user else 'نظام' }}</td>
+                    <td><span class="badge bg-secondary">{{ l.action }}</span></td>
+                    <td>{{ l.entity_type or '-' }} {% if l.entity_id %}#{{ l.entity_id }}{% endif %}</td>
+                    <td>{{ l.details or '-' }}</td>
+                    <td class="text-muted small">{{ l.ip_address or '-' }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-3">لا يوجد سجل أنشطة بعد</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
